@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package repository
@@ -20,6 +19,7 @@ package repository
 import (
 	"fmt"
 	"github.com/devtron-labs/devtron/pkg/sql"
+	"github.com/devtron-labs/devtron/util"
 	"github.com/go-pg/pg/orm"
 	"net/url"
 
@@ -66,11 +66,6 @@ type DockerArtifactStore struct {
 	sql.AuditLog
 }
 
-type DockerArtifactStoreExt struct {
-	*DockerArtifactStore
-	DeploymentCount int `sql:"deployment_count" json:"deploymentCount"`
-}
-
 type ChartDeploymentCount struct {
 	OCIChartName    string `sql:"oci_chart_name" json:"ociChartName"`
 	DeploymentCount int    `sql:"deployment_count" json:"deploymentCount"`
@@ -91,9 +86,10 @@ type DockerArtifactStoreRepository interface {
 	FindActiveDefaultStore() (*DockerArtifactStore, error)
 	FindAllActiveForAutocomplete() ([]DockerArtifactStore, error)
 	FindAll() ([]DockerArtifactStore, error)
+	FindAllDockerArtifactCount() (int, error)
 	FindAllChartProviders() ([]DockerArtifactStore, error)
 	FindOne(storeId string) (*DockerArtifactStore, error)
-	FindOneWithDeploymentCount(storeId string) (*DockerArtifactStoreExt, error)
+	FindDeploymentCount(storeId string) (int, error)
 	FindOneWithChartDeploymentCount(storeId, chartName string) (*ChartDeploymentCount, error)
 	FindOneInactive(storeId string) (*DockerArtifactStore, error)
 	Update(artifactStore *DockerArtifactStore, tx *pg.Tx) error
@@ -114,6 +110,10 @@ func (impl DockerArtifactStoreRepositoryImpl) GetConnection() *pg.DB {
 }
 
 func (impl DockerArtifactStoreRepositoryImpl) Save(artifactStore *DockerArtifactStore, tx *pg.Tx) error {
+	if util.IsBaseStack() {
+		return tx.Insert(artifactStore)
+	}
+
 	//TODO check for unique default
 	//there can be only one default
 	model, err := impl.FindActiveDefaultStore()
@@ -164,7 +164,12 @@ func (impl DockerArtifactStoreRepositoryImpl) FindAll() ([]DockerArtifactStore, 
 		Select()
 	return providers, err
 }
-
+func (impl DockerArtifactStoreRepositoryImpl) FindAllDockerArtifactCount() (int, error) {
+	dockerArtifactCount, err := impl.dbConnection.Model(&DockerArtifactStore{}).
+		Where("docker_artifact_store.active = ?", true).
+		Count()
+	return dockerArtifactCount, err
+}
 func (impl DockerArtifactStoreRepositoryImpl) FindAllChartProviders() ([]DockerArtifactStore, error) {
 	var providers []DockerArtifactStore
 	err := impl.dbConnection.Model(&providers).
@@ -195,14 +200,14 @@ func (impl DockerArtifactStoreRepositoryImpl) FindOne(storeId string) (*DockerAr
 	return &provider, err
 }
 
-func (impl DockerArtifactStoreRepositoryImpl) FindOneWithDeploymentCount(storeId string) (*DockerArtifactStoreExt, error) {
-	var provider DockerArtifactStoreExt
-	query := "SELECT docker_artifact_store.*, count(jq.ia_id) as deployment_count FROM docker_artifact_store" +
+func (impl DockerArtifactStoreRepositoryImpl) FindDeploymentCount(storeId string) (int, error) {
+	var DeploymentCount int
+	query := "SELECT count(jq.ia_id) as deployment_count FROM docker_artifact_store" +
 		fmt.Sprintf(" LEFT JOIN oci_registry_config orc on (docker_artifact_store.id = orc.docker_artifact_store_id and orc.is_chart_pull_active = true and orc.deleted = false and orc.repository_type = '%s' and (orc.repository_action = '%s' or orc.repository_action = '%s'))", OCI_REGISRTY_REPO_TYPE_CHART, STORAGE_ACTION_TYPE_PULL, STORAGE_ACTION_TYPE_PULL_AND_PUSH) +
 		" LEFT JOIN (SELECT aps.docker_artifact_store_id as das_id ,ia.id as ia_id FROM installed_app_versions iav INNER JOIN installed_apps ia on iav.installed_app_id = ia.id INNER JOIN app_store_application_version asav on iav.app_store_application_version_id = asav.id INNER JOIN app_store aps on asav.app_store_id = aps.id WHERE ia.active=true and iav.active=true) jq on jq.das_id = docker_artifact_store.id" +
 		" WHERE docker_artifact_store.id = ? and docker_artifact_store.active = true Group by docker_artifact_store.id;"
-	_, err := impl.dbConnection.Query(&provider, query, storeId)
-	return &provider, err
+	_, err := impl.dbConnection.Query(&DeploymentCount, query, storeId)
+	return DeploymentCount, err
 }
 
 func (impl DockerArtifactStoreRepositoryImpl) FindOneWithChartDeploymentCount(storeId, chartName string) (*ChartDeploymentCount, error) {

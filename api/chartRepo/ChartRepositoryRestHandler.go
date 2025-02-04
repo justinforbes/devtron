@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package chartRepo
@@ -20,20 +19,20 @@ package chartRepo
 import (
 	"encoding/json"
 	"errors"
-	"github.com/devtron-labs/devtron/api/restHandler/common"
-	"github.com/devtron-labs/devtron/internal/util"
-	"github.com/devtron-labs/devtron/pkg/attributes"
-	"github.com/devtron-labs/devtron/pkg/chartRepo"
-	chartRepoRepository "github.com/devtron-labs/devtron/pkg/chartRepo/repository"
-	delete2 "github.com/devtron-labs/devtron/pkg/delete"
-	"github.com/devtron-labs/devtron/pkg/user"
-	"github.com/devtron-labs/devtron/pkg/user/casbin"
-	"github.com/gorilla/mux"
-	"go.uber.org/zap"
-	"gopkg.in/go-playground/validator.v9"
 	"mime/multipart"
 	"net/http"
 	"strconv"
+
+	"github.com/devtron-labs/devtron/api/restHandler/common"
+	"github.com/devtron-labs/devtron/internal/util"
+	"github.com/devtron-labs/devtron/pkg/attributes"
+	"github.com/devtron-labs/devtron/pkg/auth/authorisation/casbin"
+	"github.com/devtron-labs/devtron/pkg/auth/user"
+	"github.com/devtron-labs/devtron/pkg/chartRepo"
+	delete2 "github.com/devtron-labs/devtron/pkg/delete"
+	"github.com/gorilla/mux"
+	"go.uber.org/zap"
+	"gopkg.in/go-playground/validator.v9"
 )
 
 const CHART_REPO_DELETE_SUCCESS_RESP = "Chart repo deleted successfully."
@@ -63,14 +62,12 @@ type ChartRepositoryRestHandlerImpl struct {
 	enforcer               casbin.Enforcer
 	validator              *validator.Validate
 	deleteService          delete2.DeleteService
-	chartRefRepository     chartRepoRepository.ChartRefRepository
-	refChartDir            chartRepoRepository.RefChartDir
 	attributesService      attributes.AttributesService
 }
 
 func NewChartRepositoryRestHandlerImpl(Logger *zap.SugaredLogger, userAuthService user.UserService, chartRepositoryService chartRepo.ChartRepositoryService,
 	enforcer casbin.Enforcer, validator *validator.Validate, deleteService delete2.DeleteService,
-	chartRefRepository chartRepoRepository.ChartRefRepository, refChartDir chartRepoRepository.RefChartDir, attributesService attributes.AttributesService) *ChartRepositoryRestHandlerImpl {
+	attributesService attributes.AttributesService) *ChartRepositoryRestHandlerImpl {
 	return &ChartRepositoryRestHandlerImpl{
 		Logger:                 Logger,
 		chartRepositoryService: chartRepositoryService,
@@ -78,8 +75,6 @@ func NewChartRepositoryRestHandlerImpl(Logger *zap.SugaredLogger, userAuthServic
 		enforcer:               enforcer,
 		validator:              validator,
 		deleteService:          deleteService,
-		chartRefRepository:     chartRefRepository,
-		refChartDir:            refChartDir,
 		attributesService:      attributesService,
 	}
 }
@@ -213,12 +208,7 @@ func (handler *ChartRepositoryRestHandlerImpl) UpdateChartRepo(w http.ResponseWr
 		common.WriteJsonResp(w, err, nil, http.StatusBadRequest)
 		return
 	}
-	err = handler.chartRepositoryService.ValidateDeploymentCount(request)
-	if err != nil {
-		handler.Logger.Errorw("error updating, UpdateChartRepo", "err", err, "payload", request)
-		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-		return
-	}
+
 	token := r.Header.Get("token")
 	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionUpdate, "*"); !ok {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)

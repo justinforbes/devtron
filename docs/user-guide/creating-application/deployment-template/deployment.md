@@ -1,9 +1,6 @@
 # Deployment
 
-This chart creates a deployment that runs multiple replicas of your application and automatically replaces any instances that fail or become unresponsive. It does not support Blue/Green and Canary deployments.
-
-
-This is the default deployment chart. You can select `Deployment` chart when you want to use only basic use cases which contain the following:
+This chart creates a deployment that runs multiple replicas of your application and automatically replaces any instances that fail or become unresponsive. It does not support Blue/Green and Canary deployments. This is the default deployment chart. You can select `Deployment` chart when you want to use only basic use cases which contain the following:
 
 * Create a Deployment to rollout a ReplicaSet. The ReplicaSet creates Pods in the background. Check the status of the rollout to see if it succeeds or not.
 * Declare the new state of the Pods. A new ReplicaSet is created and the Deployment manages moving the Pods from the old ReplicaSet to the new one at a controlled rate. Each new ReplicaSet updates the revision of the Deployment.
@@ -12,18 +9,33 @@ This is the default deployment chart. You can select `Deployment` chart when you
 * Use the status of the Deployment as an indicator that a rollout has stuck.
 * Clean up older ReplicaSets that you do not need anymore.
 
+![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/creating-application/deployment-template/dt-type-3.jpg)
 
 You can define application behavior by providing information in the following sections:
 
 | Key | Descriptions |
 | :--- | :--- |
-| `Chart version` | Select the Chart Version using which you want to deploy the application.<br> Refer [Chart Version](https://docs.devtron.ai/v/v0.5/usage/applications/creating-application/deployment-template/rollout-deployment#1.-chart-version) section for more detail.</br> |
-| `Basic Configuration` | You can select the basic deployment configuration for your application on the **Basic** GUI section instead of configuring the YAML file.<br>Refer [Basic Configuration](https://docs.devtron.ai/usage/applications/creating-application/deployment-template/rollout-deployment#2.-basic-configuration) section for more detail.</br>|
-| `Advanced (YAML)` | If you want to do additional configurations, then click **Advanced (YAML)** for modifications.<br>Refer [Advanced (YAML)](https://docs.devtron.ai/usage/applications/creating-application/deployment-template/rollout-deployment#3.-advanced-yaml) section for more detail.</br> |
-| `Show application metrics` | You can enable `Show application metrics` to see your application's metrics-CPU Service Monitor usage, Memory Usage, Status, Throughput and Latency.<br>Refer [Application Metrics](https://docs.devtron.ai/v/v0.5/usage/applications/app-details/app-metrics) for more detail.</br> |
+| `Chart version` | Select the Chart Version using which you want to deploy the application.<br> Refer [Chart Version](../../creating-application/deployment-template.md#selecting-a-chart-version) section for more detail.</br> |
+| `Basic (GUI)` | You can perform a basic deployment configuration for your application in the **Basic (GUI)** section instead of configuring the YAML file.<br>Refer [Basic Configuration](../../creating-application/deployment-template.md#using-basic-gui) section for more detail.</br>|
+| `Advanced (YAML)` | If you want to do additional configurations, then click **Advanced (YAML)** for modifications.<br>Refer [Advanced (YAML)](#advanced-yaml) section for more detail.</br> |
+| `Show application metrics` | You can enable `Show application metrics` to see your application's metrics-CPU Service Monitor usage, Memory Usage, Status, Throughput and Latency.<br>Refer [Application Metrics](../../creating-application/app-metrics.md) for more detail.</br> |
 
 
-## 1. Yaml File
+{% hint style="warning" %}
+Super-admins can lock keys in deployment template to prevent non-super-admins from modifying those locked keys. Refer [Lock Deployment Configuration](../../global-configurations/lock-deployment-config.md) to know more.
+{% endhint %}
+
+<!-- ## Basic Configuration
+
+Some of the use-cases which are defined on the Deployment Template (YAML file) may not be applicable to configure for your application. In such cases, you can do a basic deployment configuration for your application in the **Basic (GUI)** section instead of configuring the YAML file.
+
+![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/creating-application/deployment-template/basic-config-deployment-template-v2.jpg)
+
+[Click here](../../creating-application/deployment-template.md#using-basic-gui) to know more about the Basic (GUI) section. -->
+
+---
+
+## Advanced (YAML)
 
 ### Container Ports
 
@@ -57,6 +69,14 @@ ContainerPort:
 EnvVariables: []
 ```
 To set environment variables for the containers that run in the Pod.
+
+### EnvVariablesFromFieldPath
+```yaml
+EnvVariablesFromFieldPath:
+- name: ENV_NAME
+  fieldPath: status.podIP (example)
+```
+To set environment variables for the containers and fetching their values from pod-level fields.
 
 ### Liveness Probe
 
@@ -288,7 +308,7 @@ flaggerCanary:
 | `enabled` | Set true to enable canary releases using flagger else set false |
 | `addOtherGateways` | To provide multiple istio gateways for flagger |
 | `addOtherHosts` | Add multiple hosts for istio service mesh with flagger |
-| `analysis` | Define how the canary release should progresss and at what interval |
+| `analysis` | Define how the canary release should progress and at what interval |
 | `annotations` | Annotation to add on flagger resource |
 | `labels` | Labels to add on flagger resource |
 | `appProtocol` | Protocol to use for canary |
@@ -1008,12 +1028,12 @@ winterSoldier:
 
 | Key | values | Description |
 | :--- | :--- | :--- |
-| `enabled` | `fasle`,`true` | decide the enabling factor  |
+| `enabled` | `false`,`true` | decide the enabling factor  |
 | `apiVersion` | `pincher.devtron.ai/v1beta1`, `pincher.devtron.ai/v1alpha1` | specific api version  |
 | `action` | `sleep`,`delete`, `scale` | This specify  the action need to perform.  |
 | `timeRangesWithZone`:`timeZone` | eg:- `"Asia/Kolkata"`,`"US/Pacific"` |  It use to specify the timeZone used. (It uses standard format. please refer [this](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones))  |
 | `timeRangesWithZone`:`timeRanges` | array of [ `timeFrom`, `timeTo`, `weekdayFrom`, `weekdayTo`] |  It use to define time period/range on which the user need to perform the specified action. you can have multiple timeRanges. <br /> These settings will take `action` on Sat and Sun from 00:00 to 23:59:59, |
-| `targetReplicas` | `[n]` : n - number of replicas to scale. | These is mandatory field when the `action` is `scale` <br /> Defalut value is `[]`.  |
+| `targetReplicas` | `[n]` : n - number of replicas to scale. | These is mandatory field when the `action` is `scale` <br /> Default value is `[]`.  |
 | `fieldSelector` | `- AfterTime(AddTime( ParseTime({{metadata.creationTimestamp}}, '2006-01-02T15:04:05Z'), '5m'), Now()) `  | These value will take a list of methods to select the resources on which we perform specified `action` .  |
 
 
@@ -1044,7 +1064,7 @@ winterSoldier:
   fieldSelector: 
     - AfterTime(AddTime( ParseTime({{metadata.creationTimestamp}}, '2006-01-02T15:04:05Z'), '10h'), Now())
 ```
-Above settings will take action on `Sat` and `Sun` from 00:00 to 23:59:59, and on `Mon`-`Fri` from 00:00 to 08:00 and 20:00 to 23:59:59. If `action:sleep` then runs hibernate at timeFrom and unhibernate at `timeTo`. If `action: delete` then it will delete workloads at `timeFrom` and `timeTo`. Here the `action:scale` thus it scale the number of resource replicas to  `targetReplicas: [1,1,1]`. Here each element of `targetReplicas` array is mapped with the corresponding elments of array `timeRangesWithZone/timeRanges`. Thus make sure the length of both array is equal, otherwise the cnages cannot be observed.
+Above settings will take action on `Sat` and `Sun` from 00:00 to 23:59:59, and on `Mon`-`Fri` from 00:00 to 08:00 and 20:00 to 23:59:59. If `action:sleep` then runs hibernate at timeFrom and unhibernate at `timeTo`. If `action: delete` then it will delete workloads at `timeFrom` and `timeTo`. Here the `action:scale` thus it scale the number of resource replicas to  `targetReplicas: [1,1,1]`. Here each element of `targetReplicas` array is mapped with the corresponding elements of array `timeRangesWithZone/timeRanges`. Thus make sure the length of both array is equal, otherwise the cnages cannot be observed.
 
 The above example will select the application objects which have been created 10 hours ago across all namespaces excluding application's namespace. Winter soldier exposes following functions to handle time, cpu and memory.
 
@@ -1094,16 +1114,19 @@ It gives the realtime metrics of the deployed applications
 | `Mean Lead Time` | It shows the average time taken to deliver a change to production |
 | `Mean Time to Recovery` | It shows the average time taken to fix a failed pipeline |
 
-## 2. Show application metrics
+---
+
+## 4. Show Application Metrics
 
 If you want to see application metrics like different HTTP status codes metrics, application throughput, latency, response time. Enable the Application metrics from below the deployment template Save button. After enabling it, you should be able to see all metrics on App detail page. By default it remains disabled.
-![](../../../.gitbook/assets/deployment_application_metrics%20%282%29.png)
 
-Once all the Deployment template configurations are done, click on `Save` to save your deployment configuration. Now you are ready to create [Workflow](workflow/) to do CI/CD.
+![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/creating-application/deployment-template/deployment_application_metrics.jpg)
+
+Once all the Deployment template configurations are done, click on `Save` to save your deployment configuration. Now you are ready to create [Workflow](../workflow/README.md) to do CI/CD.
 
 ### Helm Chart Json Schema 
 
-Helm Chart [json schema](../../../scripts/devtron-reference-helm-charts/reference-chart_4-11-0/schema.json) is used to validate the deployment template values.
+Helm Chart [json schema](../../../../scripts/devtron-reference-helm-charts/reference-chart_4-11-0/schema.json) is used to validate the deployment template values.
 
 ### Other Validations in Json Schema
 

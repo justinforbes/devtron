@@ -1,18 +1,36 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package pipeline
 
 import (
 	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
-	"github.com/devtron-labs/authenticator/client"
 	blob_storage "github.com/devtron-labs/common-lib/blob-storage"
 	"github.com/devtron-labs/common-lib/utils/k8s"
 	"github.com/devtron-labs/devtron/internal/sql/repository"
 	"github.com/devtron-labs/devtron/internal/sql/repository/appStatus"
 	"github.com/devtron-labs/devtron/internal/sql/repository/chartConfig"
 	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig"
+	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig/bean/workflow/cdWorkflow"
 	"github.com/devtron-labs/devtron/internal/util"
 	"github.com/devtron-labs/devtron/pkg/app"
+	"github.com/devtron-labs/devtron/pkg/build/pipeline/bean"
 	chartRepoRepository "github.com/devtron-labs/devtron/pkg/chartRepo/repository"
 	"github.com/devtron-labs/devtron/pkg/cluster"
+	repository2 "github.com/devtron-labs/devtron/pkg/cluster/environment/repository"
 	repository3 "github.com/devtron-labs/devtron/pkg/cluster/repository"
 	"github.com/devtron-labs/devtron/pkg/commonService"
 	k8s2 "github.com/devtron-labs/devtron/pkg/k8s"
@@ -48,20 +66,20 @@ func getWorkflowServiceImpl(t *testing.T) *WorkflowServiceImpl {
 	newEnvConfigOverrideRepository := chartConfig.NewEnvConfigOverrideRepository(dbConnection)
 	newConfigMapRepositoryImpl := chartConfig.NewConfigMapRepositoryImpl(logger, dbConnection)
 	newChartRepository := chartRepoRepository.NewChartRepository(dbConnection)
-	newCommonServiceImpl := commonService.NewCommonServiceImpl(logger, newChartRepository, newEnvConfigOverrideRepository, nil, nil, nil, nil, nil, nil, nil)
+	newCommonServiceImpl := commonService.NewCommonServiceImpl(logger, newChartRepository, nil, newEnvConfigOverrideRepository, nil, nil, nil, nil, nil, nil, nil)
 	mergeUtil := util.MergeUtil{Logger: logger}
-	appService := app.NewAppService(nil, nil, &mergeUtil, logger, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, newConfigMapRepositoryImpl, nil, nil, nil, nil, nil, newCommonServiceImpl, nil, nil, nil, nil, nil, nil, nil, nil, "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	runTimeConfig, _ := client.GetRuntimeConfig()
+	appService := app.NewAppService(nil, nil, &mergeUtil, logger, nil, nil, nil, nil, nil, newConfigMapRepositoryImpl, nil, nil, newCommonServiceImpl, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	runTimeConfig, _ := k8s.GetRuntimeConfig()
 	k8sUtil := k8s.NewK8sUtil(logger, runTimeConfig)
 	clusterRepositoryImpl := repository3.NewClusterRepositoryImpl(dbConnection, logger)
 	v := informer.NewGlobalMapClusterNamespace()
 	k8sInformerFactoryImpl := informer.NewK8sInformerFactoryImpl(logger, v, runTimeConfig, k8sUtil)
 	clusterService := cluster.NewClusterServiceImpl(clusterRepositoryImpl, logger, k8sUtil, k8sInformerFactoryImpl, nil, nil, nil)
-	k8sCommonServiceImpl := k8s2.NewK8sCommonServiceImpl(logger, k8sUtil, clusterService)
+	k8sCommonServiceImpl := k8s2.NewK8sCommonServiceImpl(logger, k8sUtil, clusterService, nil)
 	appStatusRepositoryImpl := appStatus.NewAppStatusRepositoryImpl(dbConnection, logger)
-	environmentRepositoryImpl := repository3.NewEnvironmentRepositoryImpl(dbConnection, logger, appStatusRepositoryImpl)
+	environmentRepositoryImpl := repository2.NewEnvironmentRepositoryImpl(dbConnection, logger, appStatusRepositoryImpl)
 	argoWorkflowExecutorImpl := executors.NewArgoWorkflowExecutorImpl(logger)
-	workflowServiceImpl, _ := NewWorkflowServiceImpl(logger, environmentRepositoryImpl, ciCdConfig, appService, globalCMCSServiceImpl, argoWorkflowExecutorImpl, k8sUtil, nil, k8sCommonServiceImpl)
+	workflowServiceImpl, _ := NewWorkflowServiceImpl(logger, environmentRepositoryImpl, ciCdConfig, appService, globalCMCSServiceImpl, argoWorkflowExecutorImpl, k8sUtil, nil, k8sCommonServiceImpl, nil)
 	return workflowServiceImpl
 }
 func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
@@ -153,13 +171,13 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 			RefPlugins:                 nil,
 			AppName:                    "app",
 			TriggerByAuthor:            "admin",
-			CiBuildConfig: &bean2.CiBuildConfigBean{
+			CiBuildConfig: &bean.CiBuildConfigBean{
 				Id:                        1,
 				GitMaterialId:             0,
 				BuildContextGitMaterialId: 1,
 				UseRootBuildContext:       true,
 				CiBuildType:               "self-dockerfile-build",
-				DockerBuildConfig: &bean2.DockerBuildConfig{
+				DockerBuildConfig: &bean.DockerBuildConfig{
 					DockerfilePath:         "Dockerfile",
 					DockerfileContent:      "",
 					Args:                   nil,
@@ -173,25 +191,25 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 				},
 				BuildPackConfig: nil,
 			},
-			CiBuildDockerMtuValue:     -1,
-			IgnoreDockerCachePush:     false,
-			IgnoreDockerCachePull:     false,
-			CacheInvalidate:           false,
-			IsPvcMounted:              false,
-			ExtraEnvironmentVariables: nil,
-			EnableBuildContext:        false,
-			AppId:                     12,
-			EnvironmentId:             0,
-			OrchestratorHost:          "",
-			OrchestratorToken:         "",
-			IsExtRun:                  false,
-			ImageRetryCount:           0,
-			ImageRetryInterval:        5,
-			Type:                      bean2.CI_WORKFLOW_PIPELINE_TYPE,
-			WorkflowExecutor:          pipelineConfig.WORKFLOW_EXECUTOR_TYPE_AWF,
+			CiBuildDockerMtuValue:      -1,
+			IgnoreDockerCachePush:      false,
+			IgnoreDockerCachePull:      false,
+			CacheInvalidate:            false,
+			IsPvcMounted:               false,
+			SystemEnvironmentVariables: nil,
+			EnableBuildContext:         false,
+			AppId:                      12,
+			EnvironmentId:              0,
+			OrchestratorHost:           "",
+			OrchestratorToken:          "",
+			IsExtRun:                   false,
+			ImageRetryCount:            0,
+			ImageRetryInterval:         5,
+			Type:                       bean2.CI_WORKFLOW_PIPELINE_TYPE,
+			WorkflowExecutor:           cdWorkflow.WORKFLOW_EXECUTOR_TYPE_AWF,
 		}
 
-		data, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
+		data, _, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
 
 		createdWf := &v1alpha1.Workflow{}
 		obj := data.Items[0].Object
@@ -289,13 +307,13 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 			RefPlugins:                 nil,
 			AppName:                    "app",
 			TriggerByAuthor:            "admin",
-			CiBuildConfig: &bean2.CiBuildConfigBean{
+			CiBuildConfig: &bean.CiBuildConfigBean{
 				Id:                        1,
 				GitMaterialId:             0,
 				BuildContextGitMaterialId: 1,
 				UseRootBuildContext:       true,
 				CiBuildType:               "self-dockerfile-build",
-				DockerBuildConfig: &bean2.DockerBuildConfig{
+				DockerBuildConfig: &bean.DockerBuildConfig{
 					DockerfilePath:         "Dockerfile",
 					DockerfileContent:      "",
 					Args:                   nil,
@@ -309,25 +327,25 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 				},
 				BuildPackConfig: nil,
 			},
-			CiBuildDockerMtuValue:     -1,
-			IgnoreDockerCachePush:     false,
-			IgnoreDockerCachePull:     false,
-			CacheInvalidate:           false,
-			IsPvcMounted:              false,
-			ExtraEnvironmentVariables: nil,
-			EnableBuildContext:        false,
-			AppId:                     2,
-			EnvironmentId:             0,
-			OrchestratorHost:          "",
-			OrchestratorToken:         "",
-			IsExtRun:                  false,
-			ImageRetryCount:           0,
-			ImageRetryInterval:        5,
-			Type:                      bean2.CI_WORKFLOW_PIPELINE_TYPE,
-			WorkflowExecutor:          pipelineConfig.WORKFLOW_EXECUTOR_TYPE_AWF,
+			CiBuildDockerMtuValue:      -1,
+			IgnoreDockerCachePush:      false,
+			IgnoreDockerCachePull:      false,
+			CacheInvalidate:            false,
+			IsPvcMounted:               false,
+			SystemEnvironmentVariables: nil,
+			EnableBuildContext:         false,
+			AppId:                      2,
+			EnvironmentId:              0,
+			OrchestratorHost:           "",
+			OrchestratorToken:          "",
+			IsExtRun:                   false,
+			ImageRetryCount:            0,
+			ImageRetryInterval:         5,
+			Type:                       bean2.CI_WORKFLOW_PIPELINE_TYPE,
+			WorkflowExecutor:           cdWorkflow.WORKFLOW_EXECUTOR_TYPE_AWF,
 		}
 
-		data, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
+		data, _, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
 
 		createdWf := &v1alpha1.Workflow{}
 		obj := data.Items[0].Object
@@ -468,7 +486,7 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 			RefPlugins:      nil,
 			AppName:         "job/f1851uikJ",
 			TriggerByAuthor: "admin",
-			CiBuildConfig: &bean2.CiBuildConfigBean{
+			CiBuildConfig: &bean.CiBuildConfigBean{
 				Id:                        2,
 				GitMaterialId:             0,
 				BuildContextGitMaterialId: 0,
@@ -477,25 +495,25 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 				DockerBuildConfig:         nil,
 				BuildPackConfig:           nil,
 			},
-			CiBuildDockerMtuValue:     -1,
-			IgnoreDockerCachePush:     false,
-			IgnoreDockerCachePull:     false,
-			CacheInvalidate:           false,
-			IsPvcMounted:              false,
-			ExtraEnvironmentVariables: nil,
-			EnableBuildContext:        true,
-			AppId:                     1,
-			EnvironmentId:             0,
-			OrchestratorHost:          "",
-			OrchestratorToken:         "",
-			IsExtRun:                  false,
-			ImageRetryCount:           0,
-			ImageRetryInterval:        5,
-			Type:                      bean2.JOB_WORKFLOW_PIPELINE_TYPE,
-			WorkflowExecutor:          pipelineConfig.WORKFLOW_EXECUTOR_TYPE_AWF,
+			CiBuildDockerMtuValue:      -1,
+			IgnoreDockerCachePush:      false,
+			IgnoreDockerCachePull:      false,
+			CacheInvalidate:            false,
+			IsPvcMounted:               false,
+			SystemEnvironmentVariables: nil,
+			EnableBuildContext:         true,
+			AppId:                      1,
+			EnvironmentId:              0,
+			OrchestratorHost:           "",
+			OrchestratorToken:          "",
+			IsExtRun:                   false,
+			ImageRetryCount:            0,
+			ImageRetryInterval:         5,
+			Type:                       bean2.JOB_WORKFLOW_PIPELINE_TYPE,
+			WorkflowExecutor:           cdWorkflow.WORKFLOW_EXECUTOR_TYPE_AWF,
 		}
 
-		data, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
+		data, _, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
 
 		createdWf := &v1alpha1.Workflow{}
 		obj := data.Items[0].Object
@@ -665,7 +683,7 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 			RefPlugins:      nil,
 			AppName:         "",
 			TriggerByAuthor: "admin",
-			CiBuildConfig: &bean2.CiBuildConfigBean{
+			CiBuildConfig: &bean.CiBuildConfigBean{
 				Id:                        2,
 				GitMaterialId:             0,
 				BuildContextGitMaterialId: 0,
@@ -674,21 +692,21 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 				DockerBuildConfig:         nil,
 				BuildPackConfig:           nil,
 			},
-			CiBuildDockerMtuValue:     -1,
-			IgnoreDockerCachePush:     false,
-			IgnoreDockerCachePull:     false,
-			CacheInvalidate:           false,
-			IsPvcMounted:              false,
-			ExtraEnvironmentVariables: nil,
-			EnableBuildContext:        true,
-			AppId:                     1,
-			EnvironmentId:             0,
-			OrchestratorHost:          "",
-			OrchestratorToken:         "",
-			IsExtRun:                  false,
-			ImageRetryCount:           0,
-			ImageRetryInterval:        5,
-			Env: &repository3.Environment{
+			CiBuildDockerMtuValue:      -1,
+			IgnoreDockerCachePush:      false,
+			IgnoreDockerCachePull:      false,
+			CacheInvalidate:            false,
+			IsPvcMounted:               false,
+			SystemEnvironmentVariables: nil,
+			EnableBuildContext:         true,
+			AppId:                      1,
+			EnvironmentId:              0,
+			OrchestratorHost:           "",
+			OrchestratorToken:          "",
+			IsExtRun:                   false,
+			ImageRetryCount:            0,
+			ImageRetryInterval:         5,
+			Env: &repository2.Environment{
 				Id:        3,
 				Name:      "2-devtron",
 				ClusterId: 2,
@@ -721,10 +739,10 @@ func TestWorkflowServiceImpl_SubmitWorkflow(t *testing.T) {
 				IsVirtualEnvironment:  false,
 			},
 			Type:             bean2.JOB_WORKFLOW_PIPELINE_TYPE,
-			WorkflowExecutor: pipelineConfig.WORKFLOW_EXECUTOR_TYPE_AWF,
+			WorkflowExecutor: cdWorkflow.WORKFLOW_EXECUTOR_TYPE_AWF,
 		}
 
-		data, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
+		data, _, _ := workflowServiceImpl.SubmitWorkflow(&workflowRequest)
 
 		createdWf := &v1alpha1.Workflow{}
 		obj := data.Items[0].Object

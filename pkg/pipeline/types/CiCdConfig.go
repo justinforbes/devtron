@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package types
 
 import (
@@ -7,120 +23,143 @@ import (
 	"fmt"
 	"github.com/caarlos0/env"
 	blob_storage "github.com/devtron-labs/common-lib/blob-storage"
+	bean2 "github.com/devtron-labs/common-lib/utils/bean"
 	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig"
+	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig/bean/workflow/cdWorkflow"
+	"github.com/devtron-labs/devtron/pkg/bean/common"
+	"github.com/devtron-labs/devtron/pkg/cluster/environment/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/bean"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"os/user"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
+type CancelWfRequestDto struct {
+	ExecutorType         cdWorkflow.WorkflowExecutorType
+	WorkflowName         string
+	Namespace            string
+	RestConfig           *rest.Config
+	IsExt                bool
+	Environment          *repository.Environment
+	ForceAbort           bool
+	WorkflowGenerateName string
+}
+
+// build infra configurations like ciTimeout,ciCpuLimit,ciMemLimit,ciCpuReq,ciMemReq are being managed by infraConfig service
+
+// CATEGORY=CI_RUNNER
 type CiCdConfig struct {
-	//from ciConfig
-	DefaultCacheBucket               string                              `env:"DEFAULT_CACHE_BUCKET" envDefault:"ci-caching"`
-	DefaultCacheBucketRegion         string                              `env:"DEFAULT_CACHE_BUCKET_REGION" envDefault:"us-east-2"`
-	CiLogsKeyPrefix                  string                              `env:"CI_LOGS_KEY_PREFIX" envDxefault:"my-artifacts"`
-	CiDefaultImage                   string                              `env:"DEFAULT_CI_IMAGE" envDefault:"686244538589.dkr.ecr.us-east-2.amazonaws.com/cirunner:47"`
-	CiDefaultNamespace               string                              `env:"DEFAULT_NAMESPACE" envDefault:"devtron-ci"`
-	CiDefaultTimeout                 int64                               `env:"DEFAULT_TIMEOUT" envDefault:"3600"`
-	CiDefaultBuildLogsBucket         string                              `env:"DEFAULT_BUILD_LOGS_BUCKET" envDefault:"devtron-pro-ci-logs"`
-	CiDefaultCdLogsBucketRegion      string                              `env:"DEFAULT_CD_LOGS_BUCKET_REGION" envDefault:"us-east-2"`
-	CiLimitCpu                       string                              `env:"LIMIT_CI_CPU" envDefault:"0.5"`
-	CiLimitMem                       string                              `env:"LIMIT_CI_MEM" envDefault:"3G"`
-	CiReqCpu                         string                              `env:"REQ_CI_CPU" envDefault:"0.5"`
-	CiReqMem                         string                              `env:"REQ_CI_MEM" envDefault:"3G"`
-	CiTaintKey                       string                              `env:"CI_NODE_TAINTS_KEY" envDefault:""`
-	CiTaintValue                     string                              `env:"CI_NODE_TAINTS_VALUE" envDefault:""`
-	CiNodeLabelSelector              []string                            `env:"CI_NODE_LABEL_SELECTOR"`
-	CacheLimit                       int64                               `env:"CACHE_LIMIT" envDefault:"5000000000"` // TODO: Add to default db config also
-	CiDefaultBuildLogsKeyPrefix      string                              `env:"DEFAULT_BUILD_LOGS_KEY_PREFIX" envDefault:"arsenal-v1"`
-	CiDefaultArtifactKeyPrefix       string                              `env:"DEFAULT_ARTIFACT_KEY_LOCATION" envDefault:"arsenal-v1/ci-artifacts"`
-	CiWorkflowServiceAccount         string                              `env:"WORKFLOW_SERVICE_ACCOUNT" envDefault:"ci-runner"`
-	ExternalCiApiSecret              string                              `env:"EXTERNAL_CI_API_SECRET" envDefault:"devtroncd-secret"`
-	ExternalCiWebhookUrl             string                              `env:"EXTERNAL_CI_WEB_HOOK_URL" envDefault:""`
-	ExternalCiPayload                string                              `env:"EXTERNAL_CI_PAYLOAD" envDefault:"{\"ciProjectDetails\":[{\"gitRepository\":\"https://github.com/vikram1601/getting-started-nodejs.git\",\"checkoutPath\":\"./abc\",\"commitHash\":\"239077135f8cdeeccb7857e2851348f558cb53d3\",\"commitTime\":\"2022-10-30T20:00:00\",\"branch\":\"master\",\"message\":\"Update README.md\",\"author\":\"User Name \"}],\"dockerImage\":\"445808685819.dkr.ecr.us-east-2.amazonaws.com/orch:23907713-2\"}"`
-	CiArtifactLocationFormat         string                              `env:"CI_ARTIFACT_LOCATION_FORMAT" envDefault:"%d/%d.zip"`
-	ImageScannerEndpoint             string                              `env:"IMAGE_SCANNER_ENDPOINT" envDefault:"http://image-scanner-new-demo-devtroncd-service.devtroncd:80"`
-	CiDefaultAddressPoolBaseCidr     string                              `env:"CI_DEFAULT_ADDRESS_POOL_BASE_CIDR"`
-	CiDefaultAddressPoolSize         int                                 `env:"CI_DEFAULT_ADDRESS_POOL_SIZE"`
-	CiRunnerDockerMTUValue           int                                 `env:"CI_RUNNER_DOCKER_MTU_VALUE" envDefault:"-1"`
-	IgnoreDockerCacheForCI           bool                                `env:"CI_IGNORE_DOCKER_CACHE"`
-	VolumeMountsForCiJson            string                              `env:"CI_VOLUME_MOUNTS_JSON"`
-	BuildPvcCachePath                string                              `env:"PRE_CI_CACHE_PATH" envDefault:"/devtroncd-cache"`
-	DefaultPvcCachePath              string                              `env:"DOCKER_BUILD_CACHE_PATH" envDefault:"/var/lib/docker"`
-	BuildxPvcCachePath               string                              `env:"BUILDX_CACHE_PATH" envDefault:"/var/lib/devtron/buildx"`
-	UseBlobStorageConfigInCiWorkflow bool                                `env:"USE_BLOB_STORAGE_CONFIG_IN_CI_WORKFLOW" envDefault:"true"`
-	DefaultTargetPlatform            string                              `env:"DEFAULT_TARGET_PLATFORM" envDefault:""`
-	UseBuildx                        bool                                `env:"USE_BUILDX" envDefault:"false"`
-	EnableBuildContext               bool                                `env:"ENABLE_BUILD_CONTEXT" envDefault:"false"`
-	ImageRetryCount                  int                                 `env:"IMAGE_RETRY_COUNT" envDefault:"0"`
-	ImageRetryInterval               int                                 `env:"IMAGE_RETRY_INTERVAL" envDefault:"5"` //image retry interval takes value in seconds
-	CiWorkflowExecutorType           pipelineConfig.WorkflowExecutorType `env:"CI_WORKFLOW_EXECUTOR_TYPE" envDefault:"AWF"`
-	BuildxK8sDriverOptions           string                              `env:"BUILDX_K8S_DRIVER_OPTIONS" envDefault:""`
-	CIAutoTriggerBatchSize           int                                 `env:"CI_SUCCESS_AUTO_TRIGGER_BATCH_SIZE" envDefault:"1"`
-	SkipCreatingEcrRepo              bool                                `env:"SKIP_CREATING_ECR_REPO" envDefault:"false"`
-	MaxCiWorkflowRetries             int                                 `env:"MAX_CI_WORKFLOW_RETRIES" envDefault:"0"`
+	// from ciConfig
+	DefaultCacheBucket           string   `env:"DEFAULT_CACHE_BUCKET" envDefault:"ci-caching"`
+	DefaultCacheBucketRegion     string   `env:"DEFAULT_CACHE_BUCKET_REGION" envDefault:"us-east-2"`
+	CiLogsKeyPrefix              string   `env:"CI_LOGS_KEY_PREFIX" envDxefault:"my-artifacts"`
+	CiDefaultImage               string   `env:"DEFAULT_CI_IMAGE" envDefault:"686244538589.dkr.ecr.us-east-2.amazonaws.com/cirunner:47"`
+	CiDefaultNamespace           string   `env:"DEFAULT_NAMESPACE" envDefault:"devtron-ci"`
+	CiDefaultBuildLogsBucket     string   `env:"DEFAULT_BUILD_LOGS_BUCKET" envDefault:"devtron-pro-ci-logs"`
+	CiDefaultCdLogsBucketRegion  string   `env:"DEFAULT_CD_LOGS_BUCKET_REGION" envDefault:"us-east-2"`
+	CiTaintKey                   string   `env:"CI_NODE_TAINTS_KEY" envDefault:""`
+	CiTaintValue                 string   `env:"CI_NODE_TAINTS_VALUE" envDefault:""`
+	CiNodeLabelSelector          []string `env:"CI_NODE_LABEL_SELECTOR"`
+	CacheLimit                   int64    `env:"CACHE_LIMIT" envDefault:"5000000000"` // TODO: Add to default db config also
+	CiDefaultBuildLogsKeyPrefix  string   `env:"DEFAULT_BUILD_LOGS_KEY_PREFIX" envDefault:"arsenal-v1"`
+	CiDefaultArtifactKeyPrefix   string   `env:"DEFAULT_ARTIFACT_KEY_LOCATION" envDefault:"arsenal-v1/ci-artifacts"`
+	CiWorkflowServiceAccount     string   `env:"WORKFLOW_SERVICE_ACCOUNT" envDefault:"ci-runner"`
+	ExternalCiApiSecret          string   `env:"EXTERNAL_CI_API_SECRET" envDefault:"devtroncd-secret"`
+	ExternalCiWebhookUrl         string   `env:"EXTERNAL_CI_WEB_HOOK_URL" envDefault:""`
+	ExternalCiPayload            string   `env:"EXTERNAL_CI_PAYLOAD" envDefault:"{\"ciProjectDetails\":[{\"gitRepository\":\"https://github.com/vikram1601/getting-started-nodejs.git\",\"checkoutPath\":\"./abc\",\"commitHash\":\"239077135f8cdeeccb7857e2851348f558cb53d3\",\"commitTime\":\"2022-10-30T20:00:00\",\"branch\":\"master\",\"message\":\"Update README.md\",\"author\":\"User Name \"}],\"dockerImage\":\"445808685819.dkr.ecr.us-east-2.amazonaws.com/orch:23907713-2\"}"`
+	ImageScannerEndpoint         string   `env:"IMAGE_SCANNER_ENDPOINT" envDefault:"http://image-scanner-new-demo-devtroncd-service.devtroncd:80"`
+	CiDefaultAddressPoolBaseCidr string   `env:"CI_DEFAULT_ADDRESS_POOL_BASE_CIDR"`
+	CiDefaultAddressPoolSize     int      `env:"CI_DEFAULT_ADDRESS_POOL_SIZE"`
+	CiRunnerDockerMTUValue       int      `env:"CI_RUNNER_DOCKER_MTU_VALUE" envDefault:"-1"`
+	//Deprecated: use WorkflowCacheConfig instead
+	IgnoreDockerCacheForCI           bool                            `env:"CI_IGNORE_DOCKER_CACHE"`
+	WorkflowCacheConfig              string                          `env:"WORKFLOW_CACHE_CONFIG" envDefault:"{}"`
+	VolumeMountsForCiJson            string                          `env:"CI_VOLUME_MOUNTS_JSON"`
+	BuildPvcCachePath                string                          `env:"PRE_CI_CACHE_PATH" envDefault:"/devtroncd-cache"`
+	DefaultPvcCachePath              string                          `env:"DOCKER_BUILD_CACHE_PATH" envDefault:"/var/lib/docker"`
+	BuildxPvcCachePath               string                          `env:"BUILDX_CACHE_PATH" envDefault:"/var/lib/devtron/buildx"`
+	UseBlobStorageConfigInCiWorkflow bool                            `env:"USE_BLOB_STORAGE_CONFIG_IN_CI_WORKFLOW" envDefault:"true"`
+	DefaultTargetPlatform            string                          `env:"DEFAULT_TARGET_PLATFORM" envDefault:""`
+	UseBuildx                        bool                            `env:"USE_BUILDX" envDefault:"false"`
+	EnableBuildContext               bool                            `env:"ENABLE_BUILD_CONTEXT" envDefault:"false"`
+	ImageRetryCount                  int                             `env:"IMAGE_RETRY_COUNT" envDefault:"0"`
+	ImageRetryInterval               int                             `env:"IMAGE_RETRY_INTERVAL" envDefault:"5"` // image retry interval takes value in seconds
+	CiWorkflowExecutorType           cdWorkflow.WorkflowExecutorType `env:"CI_WORKFLOW_EXECUTOR_TYPE" envDefault:"AWF"`
+	BuildxK8sDriverOptions           string                          `env:"BUILDX_K8S_DRIVER_OPTIONS" envDefault:""`
+	CIAutoTriggerBatchSize           int                             `env:"CI_SUCCESS_AUTO_TRIGGER_BATCH_SIZE" envDefault:"1"`
+	SkipCreatingEcrRepo              bool                            `env:"SKIP_CREATING_ECR_REPO" envDefault:"false"`
+	MaxCiWorkflowRetries             int                             `env:"MAX_CI_WORKFLOW_RETRIES" envDefault:"0"`
+	NatsServerHost                   string                          `env:"NATS_SERVER_HOST" envDefault:"nats://devtron-nats.devtroncd:4222"`
+	ImageScanMaxRetries              int                             `env:"IMAGE_SCAN_MAX_RETRIES" envDefault:"3"`
+	ImageScanRetryDelay              int                             `env:"IMAGE_SCAN_RETRY_DELAY" envDefault:"5"`
+	ShowDockerBuildCmdInLogs         bool                            `env:"SHOW_DOCKER_BUILD_ARGS" envDefault:"true"`
+	IgnoreCmCsInCiJob                bool                            `env:"IGNORE_CM_CS_IN_CI_JOB" envDefault:"false"`
+	//Deprecated: use WorkflowCacheConfig instead
+	SkipCiJobBuildCachePushPull bool `env:"SKIP_CI_JOB_BUILD_CACHE_PUSH_PULL" envDefault:"false"`
+	// from CdConfig
+	CdLimitCpu                       string                          `env:"CD_LIMIT_CI_CPU" envDefault:"0.5"`
+	CdLimitMem                       string                          `env:"CD_LIMIT_CI_MEM" envDefault:"3G"`
+	CdReqCpu                         string                          `env:"CD_REQ_CI_CPU" envDefault:"0.5"`
+	CdReqMem                         string                          `env:"CD_REQ_CI_MEM" envDefault:"3G"`
+	CdTaintKey                       string                          `env:"CD_NODE_TAINTS_KEY" envDefault:"dedicated"`
+	ExternalCdTaintKey               string                          `env:"EXTERNAL_CD_NODE_TAINTS_KEY" envDefault:"dedicated"`
+	UseExternalNode                  bool                            `env:"USE_EXTERNAL_NODE" envDefault:"false"`
+	CdWorkflowServiceAccount         string                          `env:"CD_WORKFLOW_SERVICE_ACCOUNT" envDefault:"cd-runner"`
+	CdDefaultBuildLogsKeyPrefix      string                          `env:"DEFAULT_BUILD_LOGS_KEY_PREFIX" `
+	CdDefaultArtifactKeyPrefix       string                          `env:"DEFAULT_CD_ARTIFACT_KEY_LOCATION" `
+	CdTaintValue                     string                          `env:"CD_NODE_TAINTS_VALUE" envDefault:"ci"`
+	ExternalCdTaintValue             string                          `env:"EXTERNAL_CD_NODE_TAINTS_VALUE" envDefault:"ci"`
+	CdDefaultBuildLogsBucket         string                          `env:"DEFAULT_BUILD_LOGS_BUCKET" `
+	CdNodeLabelSelector              []string                        `env:"CD_NODE_LABEL_SELECTOR"`
+	ExternalCdNodeLabelSelector      []string                        `env:"EXTERNAL_CD_NODE_LABEL_SELECTOR"`
+	CdDefaultNamespace               string                          `env:"DEFAULT_CD_NAMESPACE"`
+	CdDefaultImage                   string                          `env:"DEFAULT_CI_IMAGE"`
+	CdDefaultTimeout                 int64                           `env:"DEFAULT_CD_TIMEOUT" envDefault:"3600"`
+	CdDefaultCdLogsBucketRegion      string                          `env:"DEFAULT_CD_LOGS_BUCKET_REGION" `
+	WfControllerInstanceID           string                          `env:"WF_CONTROLLER_INSTANCE_ID" envDefault:"devtron-runner"`
+	CdDefaultAddressPoolBaseCidr     string                          `env:"CD_DEFAULT_ADDRESS_POOL_BASE_CIDR"`
+	CdDefaultAddressPoolSize         int                             `env:"CD_DEFAULT_ADDRESS_POOL_SIZE"`
+	ExposeCDMetrics                  bool                            `env:"EXPOSE_CD_METRICS" envDefault:"false"`
+	UseBlobStorageConfigInCdWorkflow bool                            `env:"USE_BLOB_STORAGE_CONFIG_IN_CD_WORKFLOW" envDefault:"true"`
+	CdWorkflowExecutorType           cdWorkflow.WorkflowExecutorType `env:"CD_WORKFLOW_EXECUTOR_TYPE" envDefault:"AWF"`
+	TerminationGracePeriod           int                             `env:"TERMINATION_GRACE_PERIOD_SECS" envDefault:"180"`
+	MaxCdWorkflowRunnerRetries       int                             `env:"MAX_CD_WORKFLOW_RUNNER_RETRIES" envDefault:"0"`
 
-	//from CdConfig
-	CdLimitCpu                       string                              `env:"CD_LIMIT_CI_CPU" envDefault:"0.5"`
-	CdLimitMem                       string                              `env:"CD_LIMIT_CI_MEM" envDefault:"3G"`
-	CdReqCpu                         string                              `env:"CD_REQ_CI_CPU" envDefault:"0.5"`
-	CdReqMem                         string                              `env:"CD_REQ_CI_MEM" envDefault:"3G"`
-	CdTaintKey                       string                              `env:"CD_NODE_TAINTS_KEY" envDefault:"dedicated"`
-	ExternalCdTaintKey               string                              `env:"EXTERNAL_CD_NODE_TAINTS_KEY" envDefault:"dedicated"`
-	UseExternalNode                  bool                                `env:"USE_EXTERNAL_NODE" envDefault:"false"`
-	CdWorkflowServiceAccount         string                              `env:"CD_WORKFLOW_SERVICE_ACCOUNT" envDefault:"cd-runner"`
-	CdDefaultBuildLogsKeyPrefix      string                              `env:"DEFAULT_BUILD_LOGS_KEY_PREFIX" `
-	CdDefaultArtifactKeyPrefix       string                              `env:"DEFAULT_CD_ARTIFACT_KEY_LOCATION" `
-	CdTaintValue                     string                              `env:"CD_NODE_TAINTS_VALUE" envDefault:"ci"`
-	ExternalCdTaintValue             string                              `env:"EXTERNAL_CD_NODE_TAINTS_VALUE" envDefault:"ci"`
-	CdDefaultBuildLogsBucket         string                              `env:"DEFAULT_BUILD_LOGS_BUCKET" `
-	CdNodeLabelSelector              []string                            `env:"CD_NODE_LABEL_SELECTOR"`
-	ExternalCdNodeLabelSelector      []string                            `env:"EXTERNAL_CD_NODE_LABEL_SELECTOR"`
-	CdArtifactLocationFormat         string                              `env:"CD_ARTIFACT_LOCATION_FORMAT" envDefault:"%d/%d.zip"`
-	CdDefaultNamespace               string                              `env:"DEFAULT_CD_NAMESPACE"`
-	CdDefaultImage                   string                              `env:"DEFAULT_CI_IMAGE"`
-	CdDefaultTimeout                 int64                               `env:"DEFAULT_CD_TIMEOUT" envDefault:"3600"`
-	CdDefaultCdLogsBucketRegion      string                              `env:"DEFAULT_CD_LOGS_BUCKET_REGION" `
-	WfControllerInstanceID           string                              `env:"WF_CONTROLLER_INSTANCE_ID" envDefault:"devtron-runner"`
-	CdDefaultAddressPoolBaseCidr     string                              `env:"CD_DEFAULT_ADDRESS_POOL_BASE_CIDR"`
-	CdDefaultAddressPoolSize         int                                 `env:"CD_DEFAULT_ADDRESS_POOL_SIZE"`
-	ExposeCDMetrics                  bool                                `env:"EXPOSE_CD_METRICS" envDefault:"false"`
-	UseBlobStorageConfigInCdWorkflow bool                                `env:"USE_BLOB_STORAGE_CONFIG_IN_CD_WORKFLOW" envDefault:"true"`
-	CdWorkflowExecutorType           pipelineConfig.WorkflowExecutorType `env:"CD_WORKFLOW_EXECUTOR_TYPE" envDefault:"AWF"`
-	TerminationGracePeriod           int                                 `env:"TERMINATION_GRACE_PERIOD_SECS" envDefault:"180"`
-	MaxCdWorkflowRunnerRetries       int                                 `env:"MAX_CD_WORKFLOW_RUNNER_RETRIES" envDefault:"0"`
-
-	//common in both ciconfig and cd config
-	Type                           string
-	Mode                           string `env:"MODE" envDefault:"DEV"`
-	OrchestratorHost               string `env:"ORCH_HOST" envDefault:"http://devtroncd-orchestrator-service-prod.devtroncd/webhook/msg/nats"`
-	OrchestratorToken              string `env:"ORCH_TOKEN" envDefault:""`
-	ClusterConfig                  *rest.Config
-	CloudProvider                  blob_storage.BlobStorageType `env:"BLOB_STORAGE_PROVIDER" envDefault:"S3"`
-	BlobStorageEnabled             bool                         `env:"BLOB_STORAGE_ENABLED" envDefault:"false"`
-	BlobStorageS3AccessKey         string                       `env:"BLOB_STORAGE_S3_ACCESS_KEY"`
-	BlobStorageS3SecretKey         string                       `env:"BLOB_STORAGE_S3_SECRET_KEY"`
-	BlobStorageS3Endpoint          string                       `env:"BLOB_STORAGE_S3_ENDPOINT"`
-	BlobStorageS3EndpointInsecure  bool                         `env:"BLOB_STORAGE_S3_ENDPOINT_INSECURE" envDefault:"false"`
-	BlobStorageS3BucketVersioned   bool                         `env:"BLOB_STORAGE_S3_BUCKET_VERSIONED" envDefault:"true"`
-	BlobStorageGcpCredentialJson   string                       `env:"BLOB_STORAGE_GCP_CREDENTIALS_JSON"`
-	AzureAccountName               string                       `env:"AZURE_ACCOUNT_NAME"`
-	AzureGatewayUrl                string                       `env:"AZURE_GATEWAY_URL" envDefault:"http://devtron-minio.devtroncd:9000"`
-	AzureGatewayConnectionInsecure bool                         `env:"AZURE_GATEWAY_CONNECTION_INSECURE" envDefault:"true"`
-	AzureBlobContainerCiLog        string                       `env:"AZURE_BLOB_CONTAINER_CI_LOG"`
-	AzureBlobContainerCiCache      string                       `env:"AZURE_BLOB_CONTAINER_CI_CACHE"`
-	AzureAccountKey                string                       `env:"AZURE_ACCOUNT_KEY"`
-	BuildLogTTLValue               int                          `env:"BUILD_LOG_TTL_VALUE_IN_SECS" envDefault:"3600"`
-	BaseLogLocationPath            string                       `env:"BASE_LOG_LOCATION_PATH" envDefault:"/home/devtron/"`
-	InAppLoggingEnabled            bool                         `env:"IN_APP_LOGGING_ENABLED" envDefault:"false"`
-	BuildxProvenanceMode           string                       `env:"BUILDX_PROVENANCE_MODE" envDefault:""` //provenance is set to false if this flag is not set
-	ExtBlobStorageCmName           string                       `env:"EXTERNAL_BLOB_STORAGE_CM_NAME" envDefault:"blob-storage-cm"`
-	ExtBlobStorageSecretName       string                       `env:"EXTERNAL_BLOB_STORAGE_SECRET_NAME" envDefault:"blob-storage-secret"`
+	// common in both ciconfig and cd config
+	Type                                       string
+	Mode                                       string `env:"MODE" envDefault:"DEV"`
+	OrchestratorHost                           string `env:"ORCH_HOST" envDefault:"http://devtroncd-orchestrator-service-prod.devtroncd/webhook/msg/nats"`
+	OrchestratorToken                          string `env:"ORCH_TOKEN" envDefault:""`
+	ClusterConfig                              *rest.Config
+	CloudProvider                              blob_storage.BlobStorageType `env:"BLOB_STORAGE_PROVIDER" envDefault:"S3"`
+	BlobStorageEnabled                         bool                         `env:"BLOB_STORAGE_ENABLED" envDefault:"false"`
+	BlobStorageS3AccessKey                     string                       `env:"BLOB_STORAGE_S3_ACCESS_KEY"`
+	BlobStorageS3SecretKey                     string                       `env:"BLOB_STORAGE_S3_SECRET_KEY"`
+	BlobStorageS3Endpoint                      string                       `env:"BLOB_STORAGE_S3_ENDPOINT"`
+	BlobStorageS3EndpointInsecure              bool                         `env:"BLOB_STORAGE_S3_ENDPOINT_INSECURE" envDefault:"false"`
+	BlobStorageS3BucketVersioned               bool                         `env:"BLOB_STORAGE_S3_BUCKET_VERSIONED" envDefault:"true"`
+	BlobStorageGcpCredentialJson               string                       `env:"BLOB_STORAGE_GCP_CREDENTIALS_JSON"`
+	AzureAccountName                           string                       `env:"AZURE_ACCOUNT_NAME"`
+	AzureGatewayUrl                            string                       `env:"AZURE_GATEWAY_URL" envDefault:"http://devtron-minio.devtroncd:9000"`
+	AzureGatewayConnectionInsecure             bool                         `env:"AZURE_GATEWAY_CONNECTION_INSECURE" envDefault:"true"`
+	AzureBlobContainerCiLog                    string                       `env:"AZURE_BLOB_CONTAINER_CI_LOG"`
+	AzureBlobContainerCiCache                  string                       `env:"AZURE_BLOB_CONTAINER_CI_CACHE"`
+	AzureAccountKey                            string                       `env:"AZURE_ACCOUNT_KEY"`
+	BuildLogTTLValue                           int                          `env:"BUILD_LOG_TTL_VALUE_IN_SECS" envDefault:"3600"`
+	BaseLogLocationPath                        string                       `env:"BASE_LOG_LOCATION_PATH" envDefault:"/home/devtron/"`
+	InAppLoggingEnabled                        bool                         `env:"IN_APP_LOGGING_ENABLED" envDefault:"false"`
+	BuildxProvenanceMode                       string                       `env:"BUILDX_PROVENANCE_MODE" envDefault:""` // provenance is set to false if this flag is not set
+	ExtBlobStorageCmName                       string                       `env:"EXTERNAL_BLOB_STORAGE_CM_NAME" envDefault:"blob-storage-cm"`
+	ExtBlobStorageSecretName                   string                       `env:"EXTERNAL_BLOB_STORAGE_SECRET_NAME" envDefault:"blob-storage-secret"`
+	UseArtifactListingQueryV2                  bool                         `env:"USE_ARTIFACT_LISTING_QUERY_V2" envDefault:"true"`
+	UseImageTagFromGitProviderForTagBasedBuild bool                         `env:"USE_IMAGE_TAG_FROM_GIT_PROVIDER_FOR_TAG_BASED_BUILD" envDefault:"false"` // this is being done for https://github.com/devtron-labs/devtron/issues/4263
+	UseDockerApiToGetDigest                    bool                         `env:"USE_DOCKER_API_TO_GET_DIGEST" envDefault:"false"`
 }
 
 type CiConfig struct {
@@ -145,16 +184,45 @@ const (
 	CdConfigType          = "CdConfig"
 )
 
+const (
+	CiArtifactLocationFormat = "%d/%d.zip"
+	CdArtifactLocationFormat = "%d/%d.zip"
+)
+
 func GetCiConfig() (*CiConfig, error) {
 	ciCdConfig := &CiCdConfig{}
 	err := env.Parse(ciCdConfig)
 	if err != nil {
 		return nil, err
 	}
-	ciConfig := CiConfig{ciCdConfig}
+	ciConfig := CiConfig{
+		CiCdConfig: ciCdConfig,
+	}
 	ciConfig.Type = CiConfigType
 	return &ciConfig, nil
 }
+
+func GetCiConfigWithWorkflowCacheConfig() (*CiConfig, WorkflowCacheConfig, error) {
+	ciConfig, err := GetCiConfig()
+	if err != nil {
+		return nil, WorkflowCacheConfig{}, err
+	}
+	workflowCacheConfig, err := getWorkflowCacheConfig(ciConfig.WorkflowCacheConfig)
+	if err != nil {
+		return nil, WorkflowCacheConfig{}, err
+	}
+	return ciConfig, workflowCacheConfig, nil
+}
+
+func getWorkflowCacheConfig(workflowCacheConfigEnv string) (WorkflowCacheConfig, error) {
+	workflowCacheConfig := WorkflowCacheConfig{}
+	err := json.Unmarshal([]byte(workflowCacheConfigEnv), &workflowCacheConfig)
+	if err != nil {
+		return WorkflowCacheConfig{}, err
+	}
+	return workflowCacheConfig, nil
+}
+
 func GetCdConfig() (*CdConfig, error) {
 	ciCdConfig := &CiCdConfig{}
 	err := env.Parse(ciCdConfig)
@@ -187,7 +255,7 @@ func GetCiCdConfig() (*CiCdConfig, error) {
 			return nil, err
 		}
 	}
-	//validation for supported cloudproviders
+	// validation for supported cloudproviders
 	if cfg.BlobStorageEnabled && cfg.CloudProvider != BLOB_STORAGE_S3 && cfg.CloudProvider != BLOB_STORAGE_AZURE &&
 		cfg.CloudProvider != BLOB_STORAGE_GCP && cfg.CloudProvider != BLOB_STORAGE_MINIO {
 		return nil, fmt.Errorf("unsupported blob storage provider: %s", cfg.CloudProvider)
@@ -245,8 +313,6 @@ func (impl *CiCdConfig) GetDefaultNamespace() string {
 }
 func (impl *CiCdConfig) GetDefaultTimeout() int64 {
 	switch impl.Type {
-	case CiConfigType:
-		return impl.CiDefaultTimeout
 	case CdConfigType:
 		return impl.CdDefaultTimeout
 	default:
@@ -277,8 +343,6 @@ func (impl *CiCdConfig) GetDefaultCdLogsBucketRegion() string {
 
 func (impl *CiCdConfig) GetLimitCpu() string {
 	switch impl.Type {
-	case CiConfigType:
-		return impl.CiLimitCpu
 	case CdConfigType:
 		return impl.CdLimitCpu
 	default:
@@ -288,8 +352,6 @@ func (impl *CiCdConfig) GetLimitCpu() string {
 
 func (impl *CiCdConfig) GetLimitMem() string {
 	switch impl.Type {
-	case CiConfigType:
-		return impl.CiLimitMem
 	case CdConfigType:
 		return impl.CdLimitMem
 	default:
@@ -299,8 +361,6 @@ func (impl *CiCdConfig) GetLimitMem() string {
 
 func (impl *CiCdConfig) GetReqCpu() string {
 	switch impl.Type {
-	case CiConfigType:
-		return impl.CiReqCpu
 	case CdConfigType:
 		return impl.CdReqCpu
 	default:
@@ -310,8 +370,6 @@ func (impl *CiCdConfig) GetReqCpu() string {
 
 func (impl *CiCdConfig) GetReqMem() string {
 	switch impl.Type {
-	case CiConfigType:
-		return impl.CiReqMem
 	case CdConfigType:
 		return impl.CdReqMem
 	default:
@@ -351,7 +409,7 @@ func (impl *CiCdConfig) GetDefaultBuildLogsKeyPrefix() string {
 		return ""
 	}
 }
-func (impl *CiCdConfig) GetDefaultArtifactKeyPrefix() string {
+func (impl *CiCdConfig) getDefaultArtifactKeyPrefix() string {
 	switch impl.Type {
 	case CiConfigType:
 		return impl.CiDefaultArtifactKeyPrefix
@@ -376,9 +434,17 @@ func (impl *CiCdConfig) GetWorkflowServiceAccount() string {
 func (impl *CiCdConfig) GetArtifactLocationFormat() string {
 	switch impl.Type {
 	case CiConfigType:
-		return impl.CiArtifactLocationFormat
+		ciArtifactLocationFormat := CiArtifactLocationFormat
+		if len(impl.getDefaultArtifactKeyPrefix()) != 0 {
+			ciArtifactLocationFormat = path.Join(impl.getDefaultArtifactKeyPrefix(), ciArtifactLocationFormat)
+		}
+		return ciArtifactLocationFormat
 	case CdConfigType:
-		return impl.CdArtifactLocationFormat
+		cdArtifactLocationFormat := CdArtifactLocationFormat
+		if len(impl.getDefaultArtifactKeyPrefix()) != 0 {
+			cdArtifactLocationFormat = path.Join(impl.getDefaultArtifactKeyPrefix(), cdArtifactLocationFormat)
+		}
+		return cdArtifactLocationFormat
 	default:
 		return ""
 	}
@@ -406,7 +472,7 @@ func (impl *CiCdConfig) GetDefaultAddressPoolSize() int {
 	}
 }
 
-func (impl *CiCdConfig) GetWorkflowExecutorType() pipelineConfig.WorkflowExecutorType {
+func (impl *CiCdConfig) GetWorkflowExecutorType() cdWorkflow.WorkflowExecutorType {
 	switch impl.Type {
 	case CiConfigType:
 		return impl.CiWorkflowExecutorType
@@ -493,24 +559,25 @@ type GitTriggerInfoResponse struct {
 	Default          bool                                        `json:"default,omitempty"`
 	ImageTaggingData ImageTaggingResponseDTO                     `json:"imageTaggingData"`
 	Image            string                                      `json:"image"`
+	TargetPlatforms  []*bean2.TargetPlatform                     `json:"targetPlatforms"`
 }
 
 type Trigger struct {
-	PipelineId                int
-	CommitHashes              map[int]pipelineConfig.GitCommit
-	CiMaterials               []*pipelineConfig.CiPipelineMaterial
-	TriggeredBy               int32
-	InvalidateCache           bool
-	ExtraEnvironmentVariables map[string]string // extra env variables which will be used for CI
-	EnvironmentId             int
-	PipelineType              string
-	CiArtifactLastFetch       time.Time
-	ReferenceCiWorkflowId     int
+	PipelineId            int
+	CommitHashes          map[int]pipelineConfig.GitCommit
+	CiMaterials           []*pipelineConfig.CiPipelineMaterial
+	TriggeredBy           int32
+	InvalidateCache       bool
+	RuntimeParameters     *common.RuntimeParameters // extra env variables which will be used for CI
+	EnvironmentId         int
+	PipelineType          string
+	CiArtifactLastFetch   time.Time
+	ReferenceCiWorkflowId int
 }
 
-func (obj Trigger) BuildTriggerObject(refCiWorkflow *pipelineConfig.CiWorkflow,
+func (obj *Trigger) BuildTriggerObject(refCiWorkflow *pipelineConfig.CiWorkflow,
 	ciMaterials []*pipelineConfig.CiPipelineMaterial, triggeredBy int32,
-	invalidateCache bool, extraEnvironmentVariables map[string]string,
+	invalidateCache bool, runtimeParameters *common.RuntimeParameters,
 	pipelineType string) {
 
 	obj.PipelineId = refCiWorkflow.CiPipelineId
@@ -521,7 +588,7 @@ func (obj Trigger) BuildTriggerObject(refCiWorkflow *pipelineConfig.CiWorkflow,
 	obj.EnvironmentId = refCiWorkflow.EnvironmentId
 	obj.ReferenceCiWorkflowId = refCiWorkflow.Id
 	obj.InvalidateCache = invalidateCache
-	obj.ExtraEnvironmentVariables = extraEnvironmentVariables
+	obj.RuntimeParameters = runtimeParameters
 	obj.PipelineType = pipelineType
 
 }
@@ -565,4 +632,10 @@ func DecodeSecretKey(secretKey string) string {
 		fmt.Println("error decoding base64 key:", err)
 	}
 	return string(decodedKey)
+}
+
+type WorkflowCacheConfig struct {
+	IgnoreCI    bool `json:"ignoreCI"`
+	IgnoreCIJob bool `json:"ignoreCIJob"`
+	IgnoreJob   bool `json:"ignoreJob"`
 }

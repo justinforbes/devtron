@@ -1,12 +1,32 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package capacity
 
 import (
 	"context"
 	"fmt"
+	"github.com/devtron-labs/common-lib/utils"
 	k8s2 "github.com/devtron-labs/common-lib/utils/k8s"
-	"github.com/devtron-labs/devtron/pkg/cluster"
+	client "github.com/devtron-labs/devtron/api/helm-app/service"
+	"github.com/devtron-labs/devtron/internal/util"
+	bean2 "github.com/devtron-labs/devtron/pkg/cluster/bean"
 	"github.com/devtron-labs/devtron/pkg/k8s"
 	application2 "github.com/devtron-labs/devtron/pkg/k8s/application"
+	bean3 "github.com/devtron-labs/devtron/pkg/k8s/bean"
 	"github.com/devtron-labs/devtron/pkg/k8s/capacity/bean"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	resourcehelper "k8s.io/kubectl/pkg/util/resource"
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 	"net/http"
@@ -29,10 +48,10 @@ import (
 )
 
 type K8sCapacityService interface {
-	GetClusterCapacityDetailList(ctx context.Context, clusters []*cluster.ClusterBean) ([]*bean.ClusterCapacityDetail, error)
-	GetClusterCapacityDetail(ctx context.Context, cluster *cluster.ClusterBean, callForList bool) (*bean.ClusterCapacityDetail, error)
-	GetNodeCapacityDetailsListByCluster(ctx context.Context, cluster *cluster.ClusterBean) ([]*bean.NodeCapacityDetail, error)
-	GetNodeCapacityDetailByNameAndCluster(ctx context.Context, cluster *cluster.ClusterBean, name string) (*bean.NodeCapacityDetail, error)
+	GetClusterCapacityDetailList(ctx context.Context, clusters []*bean2.ClusterBean) ([]*bean.ClusterCapacityDetail, error)
+	GetClusterCapacityDetail(ctx context.Context, cluster *bean2.ClusterBean, callForList bool) (*bean.ClusterCapacityDetail, error)
+	GetNodeCapacityDetailsListByCluster(ctx context.Context, cluster *bean2.ClusterBean) ([]*bean.NodeCapacityDetail, error)
+	GetNodeCapacityDetailByNameAndCluster(ctx context.Context, cluster *bean2.ClusterBean, name string) (*bean.NodeCapacityDetail, error)
 	UpdateNodeManifest(ctx context.Context, request *bean.NodeUpdateRequestDto) (*k8s2.ManifestResponse, error)
 	DeleteNode(ctx context.Context, request *bean.NodeUpdateRequestDto) (*k8s2.ManifestResponse, error)
 	CordonOrUnCordonNode(ctx context.Context, request *bean.NodeUpdateRequestDto) (string, error)
@@ -40,29 +59,27 @@ type K8sCapacityService interface {
 	EditNodeTaints(ctx context.Context, request *bean.NodeUpdateRequestDto) (string, error)
 	GetNode(ctx context.Context, clusterId int, nodeName string) (*corev1.Node, error)
 }
+
 type K8sCapacityServiceImpl struct {
 	logger                *zap.SugaredLogger
-	clusterService        cluster.ClusterService
 	k8sApplicationService application2.K8sApplicationService
-	K8sUtil               *k8s2.K8sUtil
+	K8sUtil               *k8s2.K8sServiceImpl
 	k8sCommonService      k8s.K8sCommonService
-	clusterCronService    cluster.ClusterCronService
 }
 
-func NewK8sCapacityServiceImpl(Logger *zap.SugaredLogger, clusterService cluster.ClusterService,
-	k8sApplicationService application2.K8sApplicationService, K8sUtil *k8s2.K8sUtil,
-	k8sCommonService k8s.K8sCommonService, clusterCronService cluster.ClusterCronService) *K8sCapacityServiceImpl {
+func NewK8sCapacityServiceImpl(Logger *zap.SugaredLogger,
+	k8sApplicationService application2.K8sApplicationService,
+	K8sUtil *k8s2.K8sServiceImpl,
+	k8sCommonService k8s.K8sCommonService) *K8sCapacityServiceImpl {
 	return &K8sCapacityServiceImpl{
 		logger:                Logger,
-		clusterService:        clusterService,
 		k8sApplicationService: k8sApplicationService,
 		K8sUtil:               K8sUtil,
 		k8sCommonService:      k8sCommonService,
-		clusterCronService:    clusterCronService,
 	}
 }
 
-func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetailList(ctx context.Context, clusters []*cluster.ClusterBean) ([]*bean.ClusterCapacityDetail, error) {
+func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetailList(ctx context.Context, clusters []*bean2.ClusterBean) ([]*bean.ClusterCapacityDetail, error) {
 	var clustersDetails []*bean.ClusterCapacityDetail
 	for _, cluster := range clusters {
 		clusterCapacityDetail := &bean.ClusterCapacityDetail{}
@@ -72,7 +89,7 @@ func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetailList(ctx context.Con
 		} else {
 			clusterCapacityDetail, err = impl.GetClusterCapacityDetail(ctx, cluster, true)
 			if err != nil {
-				impl.logger.Errorw("error in getting cluster capacity details by id", "err", err)
+				impl.logger.Errorw("error in getting cluster capacity details by id", "clusterID", cluster.Id, "err", err)
 				clusterCapacityDetail = &bean.ClusterCapacityDetail{
 					ErrorInConnection: err.Error(),
 				}
@@ -80,35 +97,42 @@ func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetailList(ctx context.Con
 		}
 		clusterCapacityDetail.Id = cluster.Id
 		clusterCapacityDetail.Name = cluster.ClusterName
+		clusterCapacityDetail.IsVirtualCluster = cluster.IsVirtualCluster
+		clusterCapacityDetail.IsProd = cluster.IsProd
 		clustersDetails = append(clustersDetails, clusterCapacityDetail)
 	}
 	return clustersDetails, nil
 }
 
-func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetail(ctx context.Context, cluster *cluster.ClusterBean, callForList bool) (*bean.ClusterCapacityDetail, error) {
+func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetail(ctx context.Context, cluster *bean2.ClusterBean, callForList bool) (*bean.ClusterCapacityDetail, error) {
 	//getting kubernetes clientSet by rest config
-	restConfig, k8sHttpClient, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	restConfig, k8sHttpClient, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClients(ctx, cluster)
 	if err != nil {
+		impl.logger.Errorw("error in creating k8sHttpClient", "err", err)
 		return nil, err
 	}
 	clusterDetail := &bean.ClusterCapacityDetail{}
 	nodeList, err := impl.K8sUtil.GetNodesList(ctx, k8sClientSet)
 	if err != nil {
+		if client.IsClusterUnReachableError(err) {
+			impl.logger.Errorw("k8s cluster unreachable", "err", err)
+			return nil, &util.ApiError{HttpStatusCode: http.StatusBadRequest, UserMessage: err.Error(), InternalMessage: err.Error()}
+		}
 		impl.logger.Errorw("error in getting node list", "err", err, "clusterId", cluster.Id)
 		return nil, err
 	}
 	clusterCpuAllocatable, clusterMemoryAllocatable, nodeCount := impl.setBasicClusterDetails(nodeList, clusterDetail)
-	if callForList {
-		//assigning additional data for cluster listing api call
-		clusterDetail.NodeCount = nodeCount
-		//getting serverVersion
-		serverVersion, err := impl.K8sUtil.GetServerVersionFromDiscoveryClient(k8sClientSet)
-		if err != nil {
-			impl.logger.Errorw("error in getting server version", "err", err, "clusterId", cluster.Id)
-			return nil, err
-		}
-		clusterDetail.ServerVersion = serverVersion.GitVersion
-	} else {
+	//assigning additional data for cluster listing api call
+	clusterDetail.NodeCount = nodeCount
+	//getting serverVersion
+	serverVersion, err := impl.K8sUtil.GetServerVersionFromDiscoveryClient(k8sClientSet)
+	if err != nil {
+		impl.logger.Errorw("error in getting server version", "clusterId", cluster.Id, "err", err)
+		return nil, err
+	}
+	clusterDetail.ServerVersion = serverVersion.GitVersion
+	if !callForList {
+		clusterDetail.Name = cluster.ClusterName
 		metricsClientSet, err := impl.K8sUtil.GetMetricsClientSet(restConfig, k8sHttpClient)
 		if err != nil {
 			impl.logger.Errorw("error in getting metrics client set", "err", err)
@@ -119,6 +143,7 @@ func (impl *K8sCapacityServiceImpl) GetClusterCapacityDetail(ctx context.Context
 			return nil, err
 		}
 	}
+	clusterDetail.IsProd = cluster.IsProd
 	return clusterDetail, nil
 }
 
@@ -215,9 +240,9 @@ func (impl *K8sCapacityServiceImpl) updateMetricsData(ctx context.Context, metri
 	return nil
 }
 
-func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailsListByCluster(ctx context.Context, cluster *cluster.ClusterBean) ([]*bean.NodeCapacityDetail, error) {
+func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailsListByCluster(ctx context.Context, cluster *bean2.ClusterBean) ([]*bean.NodeCapacityDetail, error) {
 	//getting kubernetes clientSet by cluster config
-	restConfig, k8sHttpClient, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	restConfig, k8sHttpClient, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClients(ctx, cluster)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +258,10 @@ func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailsListByCluster(ctx cont
 	}
 	nodeList, err := impl.K8sUtil.GetNodesList(ctx, k8sClientSet)
 	if err != nil {
+		if client.IsClusterUnReachableError(err) {
+			impl.logger.Errorw("k8s cluster unreachable", "err", err)
+			return nil, &util.ApiError{HttpStatusCode: http.StatusBadRequest, UserMessage: err.Error()}
+		}
 		impl.logger.Errorw("error in getting node list", "err", err, "clusterId", cluster.Id)
 		return nil, err
 	}
@@ -260,10 +289,10 @@ func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailsListByCluster(ctx cont
 	return nodeDetails, nil
 }
 
-func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailByNameAndCluster(ctx context.Context, cluster *cluster.ClusterBean, name string) (*bean.NodeCapacityDetail, error) {
+func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailByNameAndCluster(ctx context.Context, cluster *bean2.ClusterBean, name string) (*bean.NodeCapacityDetail, error) {
 
 	//getting kubernetes clientSet by rest config
-	restConfig, k8sHttpClient, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	restConfig, k8sHttpClient, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClients(ctx, cluster)
 	if err != nil {
 		return nil, err
 	}
@@ -302,14 +331,6 @@ func (impl *K8sCapacityServiceImpl) GetNodeCapacityDetailByNameAndCluster(ctx co
 	return nodeDetail, nil
 }
 
-func (impl *K8sCapacityServiceImpl) getK8sConfigAndClients(ctx context.Context, cluster *cluster.ClusterBean) (*rest.Config, *http.Client, *kubernetes.Clientset, error) {
-	clusterConfig, err := cluster.GetClusterConfig()
-	if err != nil {
-		impl.logger.Errorw("error in getting cluster config", "err", err, "clusterId", cluster.Id)
-		return nil, nil, nil, err
-	}
-	return impl.K8sUtil.GetK8sConfigAndClients(clusterConfig)
-}
 func (impl *K8sCapacityServiceImpl) getNodeGroupAndTaints(node *corev1.Node) (string, []*bean.LabelAnnotationTaintObject) {
 
 	nodeGroup := impl.getNodeGroup(node)
@@ -328,7 +349,7 @@ func (impl *K8sCapacityServiceImpl) getNodeGroup(node *corev1.Node) string {
 	return nodeGroup
 }
 
-func (impl *K8sCapacityServiceImpl) getNodeDetail(ctx context.Context, node *corev1.Node, nodeResourceUsage map[string]corev1.ResourceList, podList *corev1.PodList, callForList bool, cluster *cluster.ClusterBean) (*bean.NodeCapacityDetail, error) {
+func (impl *K8sCapacityServiceImpl) getNodeDetail(ctx context.Context, node *corev1.Node, nodeResourceUsage map[string]corev1.ResourceList, podList *corev1.PodList, callForList bool, cluster *bean2.ClusterBean) (*bean.NodeCapacityDetail, error) {
 	cpuAllocatable := node.Status.Allocatable[corev1.ResourceCPU]
 	memoryAllocatable := node.Status.Allocatable[corev1.ResourceMemory]
 	podCount := 0
@@ -468,16 +489,16 @@ func (impl *K8sCapacityServiceImpl) updateManifestData(ctx context.Context, node
 			},
 		},
 	}
-	request := &k8s.ResourceRequestBean{
+	request := &bean3.ResourceRequestBean{
 		K8sRequest: manifestRequest,
 		ClusterId:  clusterId,
 	}
-	manifestResponse, err := impl.k8sCommonService.GetResource(ctx, request)
+	response, err := impl.k8sCommonService.GetResource(ctx, request)
 	if err != nil {
 		impl.logger.Errorw("error in getting node manifest", "err", err)
 		return err
 	}
-	nodeDetail.Manifest = manifestResponse.Manifest
+	nodeDetail.Manifest = response.ManifestResponse.Manifest
 	return nil
 }
 
@@ -545,7 +566,7 @@ func (impl *K8sCapacityServiceImpl) UpdateNodeManifest(ctx context.Context, requ
 		},
 		Patch: request.ManifestPatch,
 	}
-	requestResourceBean := &k8s.ResourceRequestBean{K8sRequest: manifestUpdateReq, ClusterId: request.ClusterId}
+	requestResourceBean := &bean3.ResourceRequestBean{K8sRequest: manifestUpdateReq, ClusterId: request.ClusterId}
 	manifestResponse, err := impl.k8sCommonService.UpdateResource(ctx, requestResourceBean)
 	if err != nil {
 		impl.logger.Errorw("error in updating node manifest", "err", err)
@@ -565,10 +586,16 @@ func (impl *K8sCapacityServiceImpl) DeleteNode(ctx context.Context, request *bea
 			},
 		},
 	}
-	resourceRequest := &k8s.ResourceRequestBean{K8sRequest: deleteReq, ClusterId: request.ClusterId}
+	resourceRequest := &bean3.ResourceRequestBean{K8sRequest: deleteReq, ClusterId: request.ClusterId}
 	// Here Sending userId as 0 as appIdentifier is being sent nil so user id is not used in method. Update userid if appIdentifier is used
 	manifestResponse, err := impl.k8sCommonService.DeleteResource(ctx, resourceRequest)
 	if err != nil {
+		if k8s.IsResourceNotFoundErr(err) {
+			return nil, &utils.ApiError{Code: "404",
+				HttpStatusCode:  http.StatusNotFound,
+				InternalMessage: err.Error(),
+				UserMessage:     bean3.ResourceNotFoundErr}
+		}
 		impl.logger.Errorw("error in deleting node", "err", err)
 		return nil, err
 	}
@@ -577,12 +604,8 @@ func (impl *K8sCapacityServiceImpl) DeleteNode(ctx context.Context, request *bea
 
 func (impl *K8sCapacityServiceImpl) CordonOrUnCordonNode(ctx context.Context, request *bean.NodeUpdateRequestDto) (string, error) {
 	respMessage := ""
-	cluster, err := impl.getClusterBean(request.ClusterId)
-	if err != nil {
-		return respMessage, err
-	}
 	//getting kubernetes clientSet by rest config
-	_, _, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	_, _, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClientsByClusterId(ctx, request.ClusterId)
 	if err != nil {
 		return respMessage, err
 	}
@@ -613,18 +636,18 @@ func (impl *K8sCapacityServiceImpl) CordonOrUnCordonNode(ctx context.Context, re
 func (impl *K8sCapacityServiceImpl) DrainNode(ctx context.Context, request *bean.NodeUpdateRequestDto) (string, error) {
 	impl.logger.Infow("received node drain request", "request", request)
 	respMessage := ""
-	cluster, err := impl.getClusterBean(request.ClusterId)
-	if err != nil {
-		return respMessage, err
-	}
 	//getting kubernetes clientSet by rest config
-	_, _, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	_, _, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClientsByClusterId(ctx, request.ClusterId)
 	if err != nil {
 		return respMessage, err
 	}
 	//get node
 	node, err := impl.K8sUtil.GetNodeByName(context.Background(), k8sClientSet, request.Name)
 	if err != nil {
+		if client.IsNodeNotFoundError(err) {
+			impl.logger.Errorw("node not found", "err", err, "nodeName", request.Name)
+			return respMessage, &util.ApiError{HttpStatusCode: http.StatusNotFound, UserMessage: err.Error()}
+		}
 		impl.logger.Errorw("error in getting node", "err", err)
 		return respMessage, err
 	}
@@ -639,6 +662,10 @@ func (impl *K8sCapacityServiceImpl) DrainNode(ctx context.Context, request *bean
 	request.NodeDrainHelper.K8sClientSet = k8sClientSet
 	err = impl.deleteOrEvictPods(request.Name, request.NodeDrainHelper)
 	if err != nil {
+		if client.IsDaemonSetPodDeleteError(err) {
+			impl.logger.Errorw("daemonSet-managed pods can't be deleted", "err", err, "nodeName", request.Name)
+			return respMessage, &util.ApiError{HttpStatusCode: http.StatusNotFound, UserMessage: err.Error()}
+		}
 		impl.logger.Errorw("error in deleting/evicting pods", "err", err, "nodeName", request.Name)
 		return respMessage, err
 	}
@@ -646,23 +673,10 @@ func (impl *K8sCapacityServiceImpl) DrainNode(ctx context.Context, request *bean
 	return respMessage, nil
 }
 
-func (impl *K8sCapacityServiceImpl) getClusterBean(clusterId int) (*cluster.ClusterBean, error) {
-	cluster, err := impl.clusterService.FindById(clusterId)
-	if err != nil {
-		impl.logger.Errorw("error in getting cluster by ID", "err", err, "clusterId", clusterId)
-		return nil, err
-	}
-	return cluster, err
-}
-
 func (impl *K8sCapacityServiceImpl) EditNodeTaints(ctx context.Context, request *bean.NodeUpdateRequestDto) (string, error) {
 	respMessage := ""
-	cluster, err := impl.getClusterBean(request.ClusterId)
-	if err != nil {
-		return respMessage, err
-	}
 	//getting kubernetes clientSet by rest config
-	_, _, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	_, _, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClientsByClusterId(ctx, request.ClusterId)
 	if err != nil {
 		return respMessage, err
 	}
@@ -688,12 +702,8 @@ func (impl *K8sCapacityServiceImpl) EditNodeTaints(ctx context.Context, request 
 }
 
 func (impl *K8sCapacityServiceImpl) GetNode(ctx context.Context, clusterId int, nodeName string) (*corev1.Node, error) {
-	cluster, err := impl.getClusterBean(clusterId)
-	if err != nil {
-		return nil, err
-	}
 	//getting kubernetes clientSet by rest config
-	_, _, k8sClientSet, err := impl.getK8sConfigAndClients(ctx, cluster)
+	_, _, k8sClientSet, err := impl.k8sCommonService.GetK8sConfigAndClientsByClusterId(ctx, clusterId)
 	if err != nil {
 		return nil, err
 	}

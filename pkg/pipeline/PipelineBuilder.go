@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package pipeline
@@ -20,6 +19,8 @@ package pipeline
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/devtron-labs/devtron/internal/sql/constants"
+	"github.com/devtron-labs/devtron/pkg/build/git/gitMaterial/read"
 	"net/url"
 	"strings"
 	"time"
@@ -27,7 +28,6 @@ import (
 	"github.com/caarlos0/env"
 	bean2 "github.com/devtron-labs/devtron/api/bean"
 	"github.com/devtron-labs/devtron/internal/sql/repository"
-	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig"
 	"github.com/devtron-labs/devtron/internal/util"
 	"github.com/devtron-labs/devtron/pkg/bean"
 	chartRepoRepository "github.com/devtron-labs/devtron/pkg/chartRepo/repository"
@@ -49,20 +49,10 @@ func GetEcrConfig() (*EcrConfig, error) {
 	return cfg, err
 }
 
-type DeploymentServiceTypeConfig struct {
-	IsInternalUse bool `env:"IS_INTERNAL_USE" envDefault:"false"`
-}
-
 type SecurityConfig struct {
 	//FORCE_SECURITY_SCANNING flag is being maintained in both dashboard and orchestrator CM's
 	//TODO: rishabh will remove FORCE_SECURITY_SCANNING from dashboard's CM.
 	ForceSecurityScanning bool `env:"FORCE_SECURITY_SCANNING" envDefault:"false"`
-}
-
-func GetDeploymentServiceTypeConfig() (*DeploymentServiceTypeConfig, error) {
-	cfg := &DeploymentServiceTypeConfig{}
-	err := env.Parse(cfg)
-	return cfg, err
 }
 
 type PipelineBuilder interface {
@@ -75,10 +65,11 @@ type PipelineBuilder interface {
 	DevtronAppStrategyService
 	AppDeploymentTypeChangeManager
 }
+
 type PipelineBuilderImpl struct {
-	logger          *zap.SugaredLogger
-	materialRepo    pipelineConfig.MaterialRepository
-	chartRepository chartRepoRepository.ChartRepository
+	logger                 *zap.SugaredLogger
+	gitMaterialReadService read.GitMaterialReadService
+	chartRepository        chartRepoRepository.ChartRepository
 	CiPipelineConfigService
 	CiMaterialConfigService
 	AppArtifactManager
@@ -91,7 +82,7 @@ type PipelineBuilderImpl struct {
 
 func NewPipelineBuilderImpl(
 	logger *zap.SugaredLogger,
-	materialRepo pipelineConfig.MaterialRepository,
+	gitMaterialReadService read.GitMaterialReadService,
 	chartRepository chartRepoRepository.ChartRepository,
 	ciPipelineConfigService CiPipelineConfigService,
 	ciMaterialConfigService CiMaterialConfigService,
@@ -109,7 +100,7 @@ func NewPipelineBuilderImpl(
 	}
 	return &PipelineBuilderImpl{
 		logger:                         logger,
-		materialRepo:                   materialRepo,
+		gitMaterialReadService:         gitMaterialReadService,
 		chartRepository:                chartRepository,
 		CiPipelineConfigService:        ciPipelineConfigService,
 		CiMaterialConfigService:        ciMaterialConfigService,
@@ -147,7 +138,7 @@ func formatDate(t time.Time, layout string) string {
 */
 
 func (impl *PipelineBuilderImpl) getGitMaterialsForApp(appId int) ([]*bean.GitMaterial, error) {
-	materials, err := impl.materialRepo.FindByAppId(appId)
+	materials, err := impl.gitMaterialReadService.FindByAppId(appId)
 	if err != nil {
 		impl.logger.Errorw("error in fetching materials for app", "appId", appId, "err", err)
 		return nil, err
@@ -156,25 +147,25 @@ func (impl *PipelineBuilderImpl) getGitMaterialsForApp(appId int) ([]*bean.GitMa
 
 	for _, material := range materials {
 		gitUrl := material.Url
-		if material.GitProvider.AuthMode == repository.AUTH_MODE_USERNAME_PASSWORD ||
-			material.GitProvider.AuthMode == repository.AUTH_MODE_ACCESS_TOKEN {
+		if material.GitProvider.AuthMode == constants.AUTH_MODE_USERNAME_PASSWORD ||
+			material.GitProvider.AuthMode == constants.AUTH_MODE_ACCESS_TOKEN {
 			u, err := url.Parse(gitUrl)
 			if err != nil {
 				return nil, err
 			}
 			var password string
 			userName := material.GitProvider.UserName
-			if material.GitProvider.AuthMode == repository.AUTH_MODE_USERNAME_PASSWORD {
+			if material.GitProvider.AuthMode == constants.AUTH_MODE_USERNAME_PASSWORD {
 				password = material.GitProvider.Password
 
-			} else if material.GitProvider.AuthMode == repository.AUTH_MODE_ACCESS_TOKEN {
+			} else if material.GitProvider.AuthMode == constants.AUTH_MODE_ACCESS_TOKEN {
 				password = material.GitProvider.AccessToken
 				if userName == "" {
 					userName = "devtron-boat"
 				}
 			}
 			if userName == "" || password == "" {
-				return nil, util.ApiError{}.ErrorfUser("invalid git credentials config")
+				return nil, util.DefaultApiError().ErrorfUser("invalid git credentials config")
 			}
 			u.User = url.UserPassword(userName, password)
 			gitUrl = u.String()
@@ -196,44 +187,19 @@ func getPatchStatus(err error) bean.CiPatchStatus {
 		if err.Error() == string(bean.CI_PATCH_NOT_AUTHORIZED_MESSAGE) {
 			return bean.CI_PATCH_NOT_AUTHORIZED
 		}
+		if strings.Contains(err.Error(), string(bean.CI_PATCH_SKIP_MESSAGE)) {
+			return bean.CI_PATCH_SKIP
+		}
 		return bean.CI_PATCH_FAILED
 	}
 	return bean.CI_PATCH_SUCCESS
 }
 
-func getPatchMessage(err error) bean.CiPatchMessage {
+func getPatchMessage(err error) string {
 	if err != nil {
-		return bean.CiPatchMessage(err.Error())
+		return err.Error()
 	}
 	return ""
-}
-
-func allDeploymentConfigTrue(deploymentConfig map[string]bool) bool {
-	for _, value := range deploymentConfig {
-		if !value {
-			return false
-		}
-	}
-	return true
-}
-
-func validDeploymentConfigReceived(deploymentConfig map[string]bool, deploymentTypeSent string) bool {
-	for key, value := range deploymentConfig {
-		if value && key == deploymentTypeSent {
-			return true
-		}
-	}
-	return false
-}
-
-func (impl *PipelineBuilderImpl) isGitRepoUrlPresent(appId int) bool {
-	fetchedChart, err := impl.chartRepository.FindLatestByAppId(appId)
-
-	if err != nil || len(fetchedChart.GitRepoUrl) == 0 {
-		impl.logger.Errorw("error fetching git repo url or it is not present")
-		return false
-	}
-	return true
 }
 
 type DeploymentType struct {
@@ -250,7 +216,7 @@ type ConfigMapSecretsResponse struct {
 }
 
 func parseMaterialInfo(materialInfo json.RawMessage, source string) (json.RawMessage, error) {
-	if source != repository.GOCD && source != repository.CI_RUNNER && source != repository.WEBHOOK && source != repository.PRE_CD && source != repository.POST_CD && source != repository.POST_CI {
+	if source != repository.GOCD && source != repository.CI_RUNNER && source != repository.WEBHOOK && source != repository.EXT && source != repository.PRE_CD && source != repository.POST_CD && source != repository.POST_CI {
 		return nil, fmt.Errorf("datasource: %s not supported", source)
 	}
 	var ciMaterials []repository.CiMaterialInfo
@@ -319,7 +285,7 @@ type PipelineStrategy struct {
 	Default            bool                                   `json:"default"`
 }
 
-func checkAppReleaseNotExist(err error) bool {
+func CheckAppReleaseNotExist(err error) bool {
 	// RELEASE_NOT_EXIST check for helm App and NOT_FOUND check for argo app
 	return strings.Contains(err.Error(), bean.NOT_FOUND) || strings.Contains(err.Error(), bean.RELEASE_NOT_EXIST)
 }

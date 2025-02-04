@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package application
 
 import (
@@ -22,7 +38,9 @@ func (impl *K8sApplicationRouterImpl) InitK8sApplicationRouter(k8sAppRouter *mux
 	k8sAppRouter.Path("/resource/rotate").Queries("appId", "{appId}").
 		HandlerFunc(impl.k8sApplicationRestHandler.RotatePod).Methods("POST")
 
-	k8sAppRouter.Path("/resource/urls").Queries("appId", "{appId}").
+	k8sAppRouter.Path("/resource/urls").
+		Queries("appId", "{appId}").
+		Queries("appType", "{appType}"). //introduced for the k8s resource urls
 		HandlerFunc(impl.k8sApplicationRestHandler.GetHostUrlsByBatch).Methods("GET")
 
 	k8sAppRouter.Path("/resource").
@@ -42,12 +60,12 @@ func (impl *K8sApplicationRouterImpl) InitK8sApplicationRouter(k8sAppRouter *mux
 
 	k8sAppRouter.Path("/pods/logs/{podName}").
 		Queries("containerName", "{containerName}").
-		//Queries("containerName", "{containerName}", "appId", "{appId}").
-		//Queries("clusterId", "{clusterId}", "namespace", "${namespace}").
-		//Queries("sinceSeconds", "{sinceSeconds}").
 		Queries("follow", "{follow}").
-		Queries("tailLines", "{tailLines}").
 		HandlerFunc(impl.k8sApplicationRestHandler.GetPodLogs).Methods("GET")
+
+	k8sAppRouter.Path("/pods/logs/download/{podName}").
+		Queries("containerName", "{containerName}").
+		HandlerFunc(impl.k8sApplicationRestHandler.DownloadPodLogs).Methods("GET")
 
 	k8sAppRouter.Path("/pod/exec/session/{identifier}/{namespace}/{pod}/{shell}/{container}").
 		HandlerFunc(impl.k8sApplicationRestHandler.GetTerminalSession).Methods("GET")

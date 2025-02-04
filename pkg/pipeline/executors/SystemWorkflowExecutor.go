@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package executors
 
 import (
@@ -30,10 +46,10 @@ type SystemWorkflowExecutor interface {
 
 type SystemWorkflowExecutorImpl struct {
 	logger  *zap.SugaredLogger
-	k8sUtil *k8s.K8sUtil
+	k8sUtil *k8s.K8sServiceImpl
 }
 
-func NewSystemWorkflowExecutorImpl(logger *zap.SugaredLogger, k8sUtil *k8s.K8sUtil) *SystemWorkflowExecutorImpl {
+func NewSystemWorkflowExecutorImpl(logger *zap.SugaredLogger, k8sUtil *k8s.K8sServiceImpl) *SystemWorkflowExecutorImpl {
 	return &SystemWorkflowExecutorImpl{logger: logger, k8sUtil: k8sUtil}
 }
 
@@ -98,6 +114,31 @@ func (impl *SystemWorkflowExecutorImpl) TerminateWorkflow(workflowName string, n
 	return err
 }
 
+func (impl *SystemWorkflowExecutorImpl) TerminateDanglingWorkflow(workflowGenerateName string, namespace string, clusterConfig *rest.Config) error {
+	_, clientset, err := impl.k8sUtil.GetK8sConfigAndClientsByRestConfig(clusterConfig)
+	if err != nil {
+		impl.logger.Errorw("error occurred while creating k8s client", "workflowGenerateName", workflowGenerateName, "namespace", namespace, "err", err)
+		return err
+	}
+	jobSelectorLabel := fmt.Sprintf("%s=%s", bean.WorkflowGenerateNamePrefix, workflowGenerateName)
+	jobList, err := clientset.BatchV1().Jobs(namespace).List(context.Background(), v12.ListOptions{LabelSelector: jobSelectorLabel})
+	if err != nil {
+		impl.logger.Errorw("error occurred while fetching jobs list for terminating dangling workflows", "namespace", namespace, "err", err)
+		return err
+	}
+	for _, job := range jobList.Items {
+		err = clientset.BatchV1().Jobs(namespace).Delete(context.Background(), job.Name, v12.DeleteOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				err = fmt.Errorf("cannot find job workflow %s", job.Name)
+			}
+			impl.logger.Errorw("error occurred while deleting workflow", "workflowName", job.Name, "namespace", namespace, "err", err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (impl *SystemWorkflowExecutorImpl) GetWorkflow(workflowName string, namespace string, clusterConfig *rest.Config) (*unstructured.UnstructuredList, error) {
 	templatesList := &unstructured.UnstructuredList{}
 	_, clientset, err := impl.k8sUtil.GetK8sConfigAndClientsByRestConfig(clusterConfig)
@@ -144,8 +185,7 @@ func (impl *SystemWorkflowExecutorImpl) GetWorkflowStatus(workflowName string, n
 }
 
 func (impl *SystemWorkflowExecutorImpl) getJobTemplate(workflowTemplate bean.WorkflowTemplate) *v1.Job {
-
-	workflowLabels := map[string]string{DEVTRON_WORKFLOW_LABEL_KEY: DEVTRON_WORKFLOW_LABEL_VALUE, "devtron.ai/purpose": "workflow", "workflowType": workflowTemplate.WorkflowType}
+	workflowLabels := GetWorkflowLabelsForSystemExecutor(workflowTemplate)
 
 	//setting TerminationGracePeriodSeconds in PodSpec
 	//which ensures Pod has enough time to execute cleanup on SIGTERM event

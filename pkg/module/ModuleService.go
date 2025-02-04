@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package module
@@ -21,10 +20,12 @@ import (
 	"context"
 	"errors"
 	"github.com/caarlos0/env/v6"
-	client "github.com/devtron-labs/devtron/api/helm-app"
-	"github.com/devtron-labs/devtron/internal/sql/repository/security"
+	"github.com/devtron-labs/devtron/api/helm-app/gRPC"
+	client "github.com/devtron-labs/devtron/api/helm-app/service"
+	clientErrors "github.com/devtron-labs/devtron/pkg/errors"
 	moduleRepo "github.com/devtron-labs/devtron/pkg/module/repo"
 	moduleUtil "github.com/devtron-labs/devtron/pkg/module/util"
+	"github.com/devtron-labs/devtron/pkg/policyGovernance/security/scanTool"
 	"github.com/devtron-labs/devtron/pkg/server"
 	serverBean "github.com/devtron-labs/devtron/pkg/server/bean"
 	serverEnvConfig "github.com/devtron-labs/devtron/pkg/server/config"
@@ -60,12 +61,13 @@ type ModuleServiceImpl struct {
 	moduleCronService              ModuleCronService
 	moduleServiceHelper            ModuleServiceHelper
 	moduleResourceStatusRepository moduleRepo.ModuleResourceStatusRepository
-	scanToolMetaDataRepository     security.ScanToolMetadataRepository
+	scanToolMetadataService        scanTool.ScanToolMetadataService
 }
 
 func NewModuleServiceImpl(logger *zap.SugaredLogger, serverEnvConfig *serverEnvConfig.ServerEnvConfig, moduleRepository moduleRepo.ModuleRepository,
 	moduleActionAuditLogRepository ModuleActionAuditLogRepository, helmAppService client.HelmAppService, serverDataStore *serverDataStore.ServerDataStore, serverCacheService server.ServerCacheService, moduleCacheService ModuleCacheService, moduleCronService ModuleCronService,
-	moduleServiceHelper ModuleServiceHelper, moduleResourceStatusRepository moduleRepo.ModuleResourceStatusRepository, scantoolMetaDataRepository security.ScanToolMetadataRepository) *ModuleServiceImpl {
+	moduleServiceHelper ModuleServiceHelper, moduleResourceStatusRepository moduleRepo.ModuleResourceStatusRepository,
+	scanToolMetadataService scanTool.ScanToolMetadataService) *ModuleServiceImpl {
 	return &ModuleServiceImpl{
 		logger:                         logger,
 		serverEnvConfig:                serverEnvConfig,
@@ -78,7 +80,7 @@ func NewModuleServiceImpl(logger *zap.SugaredLogger, serverEnvConfig *serverEnvC
 		moduleCronService:              moduleCronService,
 		moduleServiceHelper:            moduleServiceHelper,
 		moduleResourceStatusRepository: moduleResourceStatusRepository,
-		scanToolMetaDataRepository:     scantoolMetaDataRepository,
+		scanToolMetadataService:        scanToolMetadataService,
 	}
 }
 
@@ -191,7 +193,6 @@ func (impl ModuleServiceImpl) handleModuleNotFoundStatus(moduleName string) (Mod
 	}
 	moduleMetaDataStr := string(moduleMetaData)
 	isLegacyModule := gjson.Get(moduleMetaDataStr, "result.isIncludedInLegacyFullPackage").Bool()
-	baseMinVersionSupported := gjson.Get(moduleMetaDataStr, "result.baseMinVersionSupported").String()
 	moduleType := gjson.Get(moduleMetaDataStr, "result.moduleType").String()
 
 	flagForEnablingState := false
@@ -224,6 +225,10 @@ func (impl ModuleServiceImpl) handleModuleNotFoundStatus(moduleName string) (Mod
 	releaseInfo, err := impl.helmAppService.GetValuesYaml(context.Background(), devtronHelmAppIdentifier)
 	if err != nil {
 		impl.logger.Errorw("Error in getting values yaml for devtron operator helm release", "moduleName", moduleName, "err", err)
+		apiError := clientErrors.ConvertToApiError(err)
+		if apiError != nil {
+			err = apiError
+		}
 		return ModuleStatusNotInstalled, moduleType, false, err
 	}
 	releaseValues := releaseInfo.MergedValues
@@ -251,30 +256,6 @@ func (impl ModuleServiceImpl) handleModuleNotFoundStatus(moduleName string) (Mod
 				}
 			} else {
 				impl.logger.Warnw("Invalid installerModulesIfaceKind expected slice", "installerModulesIfaceKind", installerModulesIfaceKind, "val", installerModulesIface)
-			}
-		}
-	}
-
-	// if module not enabled in helm for non enterprise-user
-	if isLegacyModule && moduleName != ModuleNameCicd {
-		for _, firstReleaseModuleName := range SupportedModuleNamesListFirstReleaseExcludingCicd {
-			if moduleName != firstReleaseModuleName {
-				cicdModule, err := impl.moduleRepository.FindOne(ModuleNameCicd)
-				if err != nil {
-					if err == pg.ErrNoRows {
-						return ModuleStatusNotInstalled, moduleType, false, nil
-					} else {
-						impl.logger.Errorw("Error in getting cicd module from DB", "err", err)
-						return ModuleStatusNotInstalled, moduleType, false, err
-					}
-				}
-				cicdVersion := cicdModule.Version
-				// if cicd was installed and any module/integration comes after that then mark that module installed only if cicd was installed before that module introduction
-				if len(baseMinVersionSupported) > 0 && cicdVersion < baseMinVersionSupported {
-					status, err := impl.saveModuleAsInstalled(moduleName, moduleType, flagForEnablingState)
-					return status, moduleType, false, err
-				}
-				break
 			}
 		}
 	}
@@ -364,7 +345,7 @@ func (impl ModuleServiceImpl) HandleModuleAction(userId int32, moduleName string
 				} else if moduleName == ModuleNameSecurityTrivy {
 					toolversion = TRIVY_V1
 				}
-				err2 := impl.scanToolMetaDataRepository.MarkToolAsActive(toolName, toolversion, tx)
+				err2 := impl.scanToolMetadataService.MarkToolAsActive(toolName, toolversion, tx)
 				if err2 != nil {
 					impl.logger.Errorw("error in marking tool as active ", "err", err2)
 					return nil, err2
@@ -395,7 +376,7 @@ func (impl ModuleServiceImpl) HandleModuleAction(userId int32, moduleName string
 
 	// HELM_OPERATION Starts
 	devtronHelmAppIdentifier := impl.helmAppService.GetDevtronHelmAppIdentifier()
-	chartRepository := &client.ChartRepository{
+	chartRepository := &gRPC.ChartRepository{
 		Name: impl.serverEnvConfig.DevtronHelmRepoName,
 		Url:  impl.serverEnvConfig.DevtronHelmRepoUrl,
 	}
@@ -425,6 +406,10 @@ func (impl ModuleServiceImpl) HandleModuleAction(userId int32, moduleName string
 	updateResponse, err := impl.helmAppService.UpdateApplicationWithChartInfoWithExtraValues(context.Background(), devtronHelmAppIdentifier, chartRepository, extraValues, extraValuesYamlUrl, true)
 	if err != nil {
 		impl.logger.Errorw("error in updating helm release ", "err", err)
+		apiError := clientErrors.ConvertToApiError(err)
+		if apiError != nil {
+			err = apiError
+		}
 		module.Status = ModuleStatusInstallFailed
 		impl.moduleRepository.Update(module)
 		return nil, err
@@ -473,12 +458,12 @@ func (impl ModuleServiceImpl) EnableModule(moduleName, version string) (*ActionR
 		impl.logger.Errorw("error in updating module as active ", "moduleName", moduleName, "err", err, "moduleName", module.Name)
 		return nil, err
 	}
-	err = impl.scanToolMetaDataRepository.MarkToolAsActive(toolName, version, tx)
+	err = impl.scanToolMetadataService.MarkToolAsActive(toolName, version, tx)
 	if err != nil {
 		impl.logger.Errorw("error in marking tool as active ", "err", err, "moduleName", module.Name)
 		return nil, err
 	}
-	err = impl.scanToolMetaDataRepository.MarkOtherToolsInActive(toolName, tx, version)
+	err = impl.scanToolMetadataService.MarkOtherToolsInActive(toolName, tx, version)
 	if err != nil {
 		impl.logger.Errorw("error in marking other tools inactive ", "err", err, "moduleName", module.Name)
 		return nil, err

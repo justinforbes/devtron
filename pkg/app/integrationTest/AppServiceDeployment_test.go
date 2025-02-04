@@ -1,10 +1,25 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package integrationTest
 
 import (
 	"context"
 	"github.com/devtron-labs/devtron/api/bean"
 	"github.com/devtron-labs/devtron/internal/sql/models"
-	repository3 "github.com/devtron-labs/devtron/internal/sql/repository"
 	"github.com/devtron-labs/devtron/internal/sql/repository/chartConfig"
 	mocks3 "github.com/devtron-labs/devtron/internal/sql/repository/chartConfig/mocks"
 	mocks5 "github.com/devtron-labs/devtron/internal/sql/repository/mocks"
@@ -12,8 +27,9 @@ import (
 	"github.com/devtron-labs/devtron/pkg/app"
 	chartRepoRepository "github.com/devtron-labs/devtron/pkg/chartRepo/repository"
 	mocks2 "github.com/devtron-labs/devtron/pkg/chartRepo/repository/mocks"
-	repository2 "github.com/devtron-labs/devtron/pkg/cluster/repository"
+	repository2 "github.com/devtron-labs/devtron/pkg/cluster/environment/repository"
 	mocks4 "github.com/devtron-labs/devtron/pkg/cluster/repository/mocks"
+	repository4 "github.com/devtron-labs/devtron/pkg/deployment/manifest/deployedAppMetrics/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/history/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/history/repository/mocks"
 	"github.com/devtron-labs/devtron/pkg/sql"
@@ -109,7 +125,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_SPECIFIC_TRIGGER,
@@ -142,7 +157,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_LAST_SAVED,
@@ -289,7 +303,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_SPECIFIC_TRIGGER,
@@ -363,7 +376,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_SPECIFIC_TRIGGER,
@@ -418,7 +430,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_LAST_SAVED,
@@ -438,7 +449,7 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 
 		mockedAppLevelMetricsRepository := mocks5.NewAppLevelMetricsRepository(t)
 
-		appLevelMetricsDBObject := &repository3.AppLevelMetrics{
+		appLevelMetricsDBObject := &repository4.AppLevelMetrics{
 			Id:           1,
 			AppId:        1,
 			AppMetrics:   false,
@@ -452,7 +463,7 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 
 		appMetrics := true
 
-		mockedEnvLevelMetricsDBObject := &repository3.EnvLevelAppMetrics{
+		mockedEnvLevelMetricsDBObject := &repository4.EnvLevelAppMetrics{
 			Id:           1,
 			AppId:        1,
 			EnvId:        1,
@@ -501,7 +512,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_LAST_SAVED,
@@ -521,7 +531,7 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 
 		mockedAppLevelMetricsRepository := mocks5.NewAppLevelMetricsRepository(t)
 
-		appLevelMetricsDBObject := &repository3.AppLevelMetrics{
+		appLevelMetricsDBObject := &repository4.AppLevelMetrics{
 			Id:           1,
 			AppId:        1,
 			AppMetrics:   false,
@@ -533,7 +543,7 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 
 		mockedEnvLevelMetricsRepository := mocks5.NewEnvLevelAppMetricsRepository(t)
 
-		mockedEnvLevelMetricsDBObject := &repository3.EnvLevelAppMetrics{
+		mockedEnvLevelMetricsDBObject := &repository4.EnvLevelAppMetrics{
 			Id:           0,
 			AppId:        0,
 			EnvId:        0,
@@ -625,7 +635,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentTemplate:                    "",
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_SPECIFIC_TRIGGER,
@@ -663,7 +672,6 @@ func TestDeploymentTemplateHistoryService(t *testing.T) {
 			AppId:                                 1,
 			CiArtifactId:                          1,
 			AdditionalOverride:                    nil,
-			TargetDbVersion:                       0,
 			ForceTrigger:                          false,
 			DeploymentWithConfig:                  bean.DEPLOYMENT_CONFIG_TYPE_LAST_SAVED,
 			WfrIdForDeploymentWithSpecificTrigger: 1,

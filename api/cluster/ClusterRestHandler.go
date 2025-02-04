@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package cluster
@@ -21,20 +20,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/devtron-labs/devtron/pkg/genericNotes"
-	"github.com/devtron-labs/devtron/pkg/genericNotes/repository"
+	bean2 "github.com/devtron-labs/devtron/pkg/cluster/bean"
+	"github.com/devtron-labs/devtron/pkg/cluster/environment"
+	"github.com/devtron-labs/devtron/pkg/cluster/rbac"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/devtron-labs/devtron/pkg/auth/authorisation/casbin"
+	"github.com/devtron-labs/devtron/pkg/auth/user"
+	"github.com/devtron-labs/devtron/pkg/genericNotes"
+	"github.com/devtron-labs/devtron/pkg/genericNotes/repository"
+
 	"github.com/devtron-labs/devtron/api/restHandler/common"
 	"github.com/devtron-labs/devtron/pkg/cluster"
 	delete2 "github.com/devtron-labs/devtron/pkg/delete"
-	"github.com/devtron-labs/devtron/pkg/user"
-	"github.com/devtron-labs/devtron/pkg/user/casbin"
 	util2 "github.com/devtron-labs/devtron/util"
-	"github.com/devtron-labs/devtron/util/argo"
 	"github.com/go-pg/pg"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -69,9 +71,8 @@ type ClusterRestHandlerImpl struct {
 	validator                 *validator.Validate
 	enforcer                  casbin.Enforcer
 	deleteService             delete2.DeleteService
-	argoUserService           argo.ArgoUserService
-	environmentService        cluster.EnvironmentService
-	clusterRbacService        cluster.ClusterRbacService
+	environmentService        environment.EnvironmentService
+	clusterRbacService        rbac.ClusterRbacService
 }
 
 func NewClusterRestHandlerImpl(clusterService cluster.ClusterService,
@@ -82,9 +83,8 @@ func NewClusterRestHandlerImpl(clusterService cluster.ClusterService,
 	validator *validator.Validate,
 	enforcer casbin.Enforcer,
 	deleteService delete2.DeleteService,
-	argoUserService argo.ArgoUserService,
-	environmentService cluster.EnvironmentService,
-	clusterRbacService cluster.ClusterRbacService) *ClusterRestHandlerImpl {
+	environmentService environment.EnvironmentService,
+	clusterRbacService rbac.ClusterRbacService) *ClusterRestHandlerImpl {
 	return &ClusterRestHandlerImpl{
 		clusterService:            clusterService,
 		clusterNoteService:        clusterNoteService,
@@ -94,7 +94,6 @@ func NewClusterRestHandlerImpl(clusterService cluster.ClusterService,
 		validator:                 validator,
 		enforcer:                  enforcer,
 		deleteService:             deleteService,
-		argoUserService:           argoUserService,
 		environmentService:        environmentService,
 		clusterRbacService:        clusterRbacService,
 	}
@@ -108,7 +107,7 @@ func (impl ClusterRestHandlerImpl) SaveClusters(w http.ResponseWriter, r *http.R
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	beans := []*cluster.ClusterBean{}
+	beans := []*bean2.ClusterBean{}
 	err = decoder.Decode(&beans)
 	if err != nil {
 		impl.logger.Errorw("request err, Save", "error", err, "payload", beans)
@@ -119,12 +118,8 @@ func (impl ClusterRestHandlerImpl) SaveClusters(w http.ResponseWriter, r *http.R
 	impl.logger.Infow("request payload received for save clusters")
 
 	// RBAC enforcer applying
-	isSuperAdmin, err := impl.userService.IsSuperAdmin(int(userId))
-	if !isSuperAdmin || err != nil {
-		if err != nil {
-			impl.logger.Errorw("request err, CheckSuperAdmin", "err", err, "isSuperAdmin", isSuperAdmin)
-		}
-		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusForbidden)
+	if ok := impl.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionCreate, "*"); !ok {
+		common.WriteJsonResp(w, errors.New("unauthorized User"), nil, http.StatusForbidden)
 		return
 	}
 	//RBAC enforcer Ends
@@ -140,14 +135,6 @@ func (impl ClusterRestHandlerImpl) SaveClusters(w http.ResponseWriter, r *http.R
 	}
 	if util2.IsBaseStack() {
 		ctx = context.WithValue(ctx, "token", token)
-	} else {
-		acdToken, err := impl.argoUserService.GetLatestDevtronArgoCdUserToken()
-		if err != nil {
-			impl.logger.Errorw("error in getting acd token", "err", err)
-			common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-			return
-		}
-		ctx = context.WithValue(ctx, "token", acdToken)
 	}
 
 	for _, bean := range beans {
@@ -183,7 +170,7 @@ func (impl ClusterRestHandlerImpl) Save(w http.ResponseWriter, r *http.Request) 
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	bean := new(cluster.ClusterBean)
+	bean := new(bean2.ClusterBean)
 	err = decoder.Decode(bean)
 	if err != nil {
 		impl.logger.Errorw("request err, Save", "error", err, "payload", bean)
@@ -216,14 +203,6 @@ func (impl ClusterRestHandlerImpl) Save(w http.ResponseWriter, r *http.Request) 
 	}
 	if util2.IsBaseStack() {
 		ctx = context.WithValue(ctx, "token", token)
-	} else {
-		acdToken, err := impl.argoUserService.GetLatestDevtronArgoCdUserToken()
-		if err != nil {
-			impl.logger.Errorw("error in getting acd token", "err", err)
-			common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-			return
-		}
-		ctx = context.WithValue(ctx, "token", acdToken)
 	}
 	bean, err = impl.clusterService.Save(ctx, bean, userId)
 	if err != nil {
@@ -252,7 +231,7 @@ func (impl ClusterRestHandlerImpl) ValidateKubeconfig(w http.ResponseWriter, r *
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	bean := &cluster.Kubeconfig{}
+	bean := &bean2.Kubeconfig{}
 	err = decoder.Decode(bean)
 	if err != nil {
 		impl.logger.Errorw("request err, Validate", "error", err, "payload", bean)
@@ -285,14 +264,6 @@ func (impl ClusterRestHandlerImpl) ValidateKubeconfig(w http.ResponseWriter, r *
 	}
 	if util2.IsBaseStack() {
 		ctx = context.WithValue(ctx, "token", token)
-	} else {
-		acdToken, err := impl.argoUserService.GetLatestDevtronArgoCdUserToken()
-		if err != nil {
-			impl.logger.Errorw("error in getting acd token", "err", err)
-			common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-			return
-		}
-		ctx = context.WithValue(ctx, "token", acdToken)
 	}
 	res, err := impl.clusterService.ValidateKubeconfig(bean.Config)
 	if err != nil {
@@ -314,9 +285,9 @@ func (impl ClusterRestHandlerImpl) FindAll(w http.ResponseWriter, r *http.Reques
 	}
 
 	// RBAC enforcer applying
-	var result []*cluster.ClusterBean
+	var result []*bean2.ClusterBean
 	for _, item := range clusterList {
-		if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionGet, strings.ToLower(item.ClusterName)); ok {
+		if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionGet, item.ClusterName); ok {
 			result = append(result, item)
 		}
 	}
@@ -343,7 +314,7 @@ func (impl ClusterRestHandlerImpl) FindById(w http.ResponseWriter, r *http.Reque
 
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionGet, strings.ToLower(bean.ClusterName)); !ok {
+	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionGet, bean.ClusterName); !ok {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -379,7 +350,7 @@ func (impl ClusterRestHandlerImpl) FindNoteByClusterId(w http.ResponseWriter, r 
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	authenticated, err := impl.clusterRbacService.CheckAuthorization(bean.ClusterName, bean.ClusterId, token, userId, false)
+	authenticated, err := impl.clusterRbacService.CheckAuthorization(bean.ClusterName, bean.ClusterId, token, userId, true)
 	if err != nil {
 		impl.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", bean.ClusterId)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
@@ -402,7 +373,7 @@ func (impl ClusterRestHandlerImpl) Update(w http.ResponseWriter, r *http.Request
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	var bean cluster.ClusterBean
+	var bean bean2.ClusterBean
 	err = decoder.Decode(&bean)
 	if err != nil {
 		impl.logger.Errorw("request err, Update", "error", err, "payload", bean)
@@ -418,7 +389,7 @@ func (impl ClusterRestHandlerImpl) Update(w http.ResponseWriter, r *http.Request
 	}
 
 	// RBAC enforcer applying
-	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionUpdate, strings.ToLower(bean.ClusterName)); !ok {
+	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionUpdate, bean.ClusterName); !ok {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -435,14 +406,6 @@ func (impl ClusterRestHandlerImpl) Update(w http.ResponseWriter, r *http.Request
 	}
 	if util2.IsBaseStack() {
 		ctx = context.WithValue(ctx, "token", token)
-	} else {
-		acdToken, err := impl.argoUserService.GetLatestDevtronArgoCdUserToken()
-		if err != nil {
-			impl.logger.Errorw("error in getting acd token", "err", err)
-			common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-			return
-		}
-		ctx = context.WithValue(ctx, "token", acdToken)
 	}
 	_, err = impl.clusterService.Update(ctx, &bean, userId)
 	if err != nil {
@@ -463,7 +426,7 @@ func (impl ClusterRestHandlerImpl) UpdateClusterDescription(w http.ResponseWrite
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	var bean cluster.ClusterBean
+	var bean bean2.ClusterBean
 	err = decoder.Decode(&bean)
 	if err != nil {
 		impl.logger.Errorw("request err, UpdateClusterDescription", "error", err, "payload", bean)
@@ -479,7 +442,8 @@ func (impl ClusterRestHandlerImpl) UpdateClusterDescription(w http.ResponseWrite
 		return
 	}
 	// RBAC enforcer applying
-	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionUpdate, strings.ToLower(clusterDescription.ClusterName)); !ok {
+	authenticated := impl.clusterRbacService.CheckAuthorisationForAllK8sPermissions(token, clusterDescription.ClusterName, casbin.ActionUpdate)
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -523,7 +487,8 @@ func (impl ClusterRestHandlerImpl) UpdateClusterNote(w http.ResponseWriter, r *h
 		return
 	}
 	// RBAC enforcer applying
-	if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionUpdate, strings.ToLower(clusterDescription.ClusterName)); !ok {
+	authenticated := impl.clusterRbacService.CheckAuthorisationForAllK8sPermissions(token, clusterDescription.ClusterName, casbin.ActionUpdate)
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -549,7 +514,7 @@ func (impl ClusterRestHandlerImpl) FindAllForAutoComplete(w http.ResponseWriter,
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
 		return
 	}
-	var result []cluster.ClusterBean
+	var result []bean2.ClusterBean
 	v := r.URL.Query()
 	authEnabled := true
 	auth := v.Get("auth")
@@ -578,7 +543,7 @@ func (impl ClusterRestHandlerImpl) FindAllForAutoComplete(w http.ResponseWriter,
 	//RBAC enforcer Ends
 
 	if len(result) == 0 {
-		result = make([]cluster.ClusterBean, 0)
+		result = make([]bean2.ClusterBean, 0)
 	}
 	common.WriteJsonResp(w, err, result, http.StatusOK)
 }
@@ -591,7 +556,7 @@ func (impl ClusterRestHandlerImpl) DeleteCluster(w http.ResponseWriter, r *http.
 		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
 		return
 	}
-	var bean cluster.ClusterBean
+	var bean bean2.ClusterBean
 	err = decoder.Decode(&bean)
 	if err != nil {
 		impl.logger.Errorw("request err, Delete", "error", err, "payload", bean)
@@ -624,17 +589,61 @@ func (impl ClusterRestHandlerImpl) DeleteCluster(w http.ResponseWriter, r *http.
 
 func (impl ClusterRestHandlerImpl) GetAllClusterNamespaces(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("token")
+	userId, err := impl.userService.GetLoggedInUser(r)
+	if userId == 0 || err != nil {
+		impl.logger.Errorw("err, GetAllClusterNamespaces", "error", err, "userId", userId)
+		common.WriteJsonResp(w, err, "Unauthorized User", http.StatusUnauthorized)
+		return
+	}
 	clusterNamespaces := impl.clusterService.GetAllClusterNamespaces()
 
 	// RBAC enforcer applying
-	for clusterName, _ := range clusterNamespaces {
-		if ok := impl.enforcer.Enforce(token, casbin.ResourceCluster, casbin.ActionGet, strings.ToLower(clusterName)); !ok {
-			delete(clusterNamespaces, clusterName)
-		}
+	filteredClusterNamespaces, err := impl.HandleRbacForClusterNamespace(userId, token, clusterNamespaces)
+	if err != nil {
+		impl.logger.Errorw("error in GetAllClusterNamespaces", "err", err)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
 	}
 	//RBAC enforcer Ends
 
-	common.WriteJsonResp(w, nil, clusterNamespaces, http.StatusOK)
+	common.WriteJsonResp(w, nil, filteredClusterNamespaces, http.StatusOK)
+}
+
+func (impl ClusterRestHandlerImpl) HandleRbacForClusterNamespace(userId int32, token string, clusterNamespaces map[string][]string) (map[string][]string, error) {
+	filteredClusterNamespaces := make(map[string][]string)
+	if ok := impl.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionGet, "*"); ok {
+		return clusterNamespaces, nil
+	}
+	roles, err := impl.clusterService.FetchRolesFromGroup(userId)
+	if err != nil {
+		impl.logger.Errorw("error on fetching user roles for cluster list", "err", err)
+		return nil, err
+	}
+
+	clusterAndNameSpaceVsAllowedMap := make(map[string]bool, len(roles))
+	clusterNameVsAllAllowedMap := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		clusterAndNameSpaceVsAllowedMap[strings.ToLower(role.Cluster+"_"+role.Namespace)] = true
+		if role.Namespace == "" {
+			clusterNameVsAllAllowedMap[role.Cluster] = true
+		} else {
+			clusterNameVsAllAllowedMap[role.Cluster] = false
+		}
+	}
+
+	for clusterName, allNamespaces := range clusterNamespaces {
+		if val, exist := clusterNameVsAllAllowedMap[clusterName]; val {
+			filteredClusterNamespaces[clusterName] = allNamespaces
+		} else if exist {
+			for _, namespace := range allNamespaces {
+				if val2, exist2 := clusterAndNameSpaceVsAllowedMap[strings.ToLower(clusterName+"_"+namespace)]; exist2 && val2 {
+					filteredClusterNamespaces[clusterName] = append(filteredClusterNamespaces[clusterName], namespace)
+				}
+			}
+		}
+	}
+	return filteredClusterNamespaces, nil
+
 }
 
 func (impl ClusterRestHandlerImpl) GetClusterNamespaces(w http.ResponseWriter, r *http.Request) {
@@ -693,7 +702,7 @@ func (impl ClusterRestHandlerImpl) FindAllForClusterPermission(w http.ResponseWr
 	if len(clusterList) == 0 {
 		// assumption is that if list is empty, then it can happen only in case of Unauthorized (but not sending Unauthorized for super-admin user)
 		if isActionUserSuperAdmin {
-			clusterList = make([]cluster.ClusterBean, 0)
+			clusterList = make([]bean2.ClusterBean, 0)
 		} else {
 			common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 			return

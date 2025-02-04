@@ -7,15 +7,15 @@ global:
     allowPrivilegeEscalation: false
     runAsUser: 1000
     runAsNonRoot: true
-
+  containerRegistry: "quay.io/devtron"
+extraManifests: []
 installer:
-  release: "v0.6.25"
-  image: "quay.io/devtron/inception"
-  tag: "44b30917-185-13275"
-  
+  release: "v1.2.1"
+  registry: ""
+  image: "inception"
+  tag: "473deaa4-185-21582"
 components:
   dashboard:
-    image: "quay.io/devtron/dashboard:b880ad10-325-19906"
     config:
       extraConfigs:
         USE_V2: "true"
@@ -24,23 +24,43 @@ components:
         HIDE_EXCLUDE_INCLUDE_GIT_COMMITS: "false"
         ENABLE_SCOPED_VARIABLES: "true"
         ENABLE_CI_JOB: "true"
+        GLOBAL_API_TIMEOUT: "60000"
+        TRIGGER_API_TIMEOUT: "60000"
+        ENABLE_EXTERNAL_ARGO_CD: "true"
+        SERVICE_WORKER_TIMEOUT: "1"
+        API_BATCH_SIZE: "30"
+        FEATURE_EXTERNAL_FLUX_CD_ENABLE: "true"
+        FEATURE_STEP_WISE_LOGS_ENABLE: "true"
+        FEATURE_USER_DEFINED_GITOPS_REPO_ENABLE: "true"
+        ENABLE_RESOURCE_SCAN: "true"
+    registry: ""
+    image: "dashboard:4eb1a17a-690-28956"
+    imagePullPolicy: IfNotPresent
   devtron:
-    image: "quay.io/devtron/hyperion:95146ae5-280-19913"
-    cicdImage: "quay.io/devtron/devtron:95146ae5-434-19914"
-    customOverrides:
-      DEFAULT_CI_IMAGE: "quay.io/devtron/ci-runner:560e6867-138-19679"
+    registry: ""
+    image: "hyperion:69603019-280-29389"
+    cicdImage: "devtron:69603019-434-29388"
+    imagePullPolicy: IfNotPresent
+    customOverrides: {}
+  ciRunner:
+    registry: ""
+    image: "ci-runner:343b24f5-138-29387"
   argocdDexServer:
-    image: "ghcr.io/dexidp/dex:v2.30.2"
+    registry: ""
+    image: "dex:v2.30.2"
+    imagePullPolicy: IfNotPresent
     initContainer:
-      authenticator: "quay.io/devtron/authenticator:e414faff-393-13273"
+      authenticator: "authenticator:e414faff-393-13273"
   kubelink:
-    image: "quay.io/devtron/kubelink:59a19eb7-564-19917"
+    registry: ""
+    image: "kubelink:0a3d5e84-564-28948"
+    imagePullPolicy: IfNotPresent
     configs:
       ENABLE_HELM_RELEASE_CACHE: "true"
+      USE_CUSTOM_HTTP_TRANSPORT: "true"
       MANIFEST_FETCH_BATCH_SIZE: "2"
       NATS_MSG_PROCESSING_BATCH_SIZE: "1"
       NATS_SERVER_HOST: nats://devtron-nats.devtroncd:4222
-      RUN_HELM_INSTALL_IN_ASYNC_MODE: "false"
       PG_ADDR: postgresql-postgresql.devtroncd
       PG_DATABASE: orchestrator
       PG_LOG_QUERY: "true"
@@ -49,12 +69,30 @@ components:
     dbconfig:
       secretName: postgresql-postgresql
       keyName: postgresql-password
+  kubewatch:
+    registry: ""
+    image: "kubewatch:0a3d5e84-419-28949"
+    imagePullPolicy: IfNotPresent
+    configs:
+      devtroncd_NAMESPACE: "devtron-ci"
+      USE_CUSTOM_HTTP_TRANSPORT: "true"
+      CI_INFORMER: "true"
+      ACD_NAMESPACE: "devtroncd"
+      ACD_INFORMER: "true"
+      NATS_STREAM_MAX_AGE: "10800"
   postgres:
-    image: "quay.io/devtron/postgres:11.9.0-debian-10-r26"
-    armImage: "quay.io/devtron/postgres:11.9"
-  gitsensor:
-    image: "quay.io/devtron/git-sensor:4f3b9a14-200-19136"
+    registry: ""
+    image: "postgres:11.9.0-debian-10-r26"
+    armImage: "postgres:11.9"
+    initImage: "minideb:latest"
     imagePullPolicy: "IfNotPresent"
+    metrics:
+      image: postgres_exporter:v0.4.7
+      armImage: postgres_exporter:v0.10.1
+  gitsensor:
+    registry: ""
+    image: "git-sensor:0a3d5e84-200-28960"
+    imagePullPolicy: IfNotPresent
     serviceMonitor:
       enabled: false
     persistence:
@@ -64,11 +102,14 @@ components:
       PG_USER: postgres
       COMMIT_STATS_TIMEOUT_IN_SEC: "2"
       ENABLE_FILE_STATS: "true"
+      USE_GIT_CLI: "true"
     dbconfig:
       secretName: postgresql-postgresql
       keyName: postgresql-password
-  lens: 
-    image: "quay.io/devtron/lens:8803028b-333-16178"
+  # Values for lens
+  lens:
+    registry: ""
+    image: "lens:0a3d5e84-333-28951"
     imagePullPolicy: IfNotPresent
     configs:
       GIT_SENSOR_PROTOCOL: GRPC
@@ -81,21 +122,27 @@ components:
     dbconfig:
       secretName: postgresql-postgresql
       keyName: postgresql-password
+  # Change below values for nats
   nats:
+    registry: ""
     image: nats:2.9.3-alpine
-    imagePullPolicy: IfNotPresent
     reloader:
-      image: quay.io/devtron/nats-server-config-reloader:0.6.2
+      image: nats-server-config-reloader:0.6.2
       imagePullPolicy: IfNotPresent
     metrics:
-      image: quay.io/devtron/prometheus-nats-exporter:0.9.0
+      image: prometheus-nats-exporter:0.9.0
       imagePullPolicy: IfNotPresent
+    natsBox:
+      image: nats-box
     serviceMonitor:
       enabled: false
     persistence:
       storage: 5Gi
   migrator:
-    image: "quay.io/devtron/migrator:v4.16.2"
+    registry: ""
+    image: "migrator:v4.16.2"
+    kubectlImage: "kubectl:latest"
+    duplicateChartImage: devtron-utils:dup-chart-repo-v1.1.0
     envVars:
       devtron:
         DB_NAME: "orchestrator"
@@ -103,23 +150,82 @@ components:
         DB_NAME: "casbin"
       gitsensor:
         DB_NAME: "git_sensor"
-      lens: 
+      lens:
         DB_NAME: "lens"
-        
+  chartSync:
+    registry: ""
+    image: chart-sync:0a3d5e84-836-28979
+    schedule: "0 19 * * *"
+    extraConfigs: {}
+# values for argocd integration
 argo-cd:
   global:
     image:
+      # -- If defined, a repository applied to all Argo CD deployments
       repository: quay.io/argoproj/argocd
+      # -- Overrides the global Argo CD image tag whose default is the chart appVersion
       tag: "v2.5.2"
+      # -- If defined, a imagePullPolicy applied to all Argo CD deployments
       imagePullPolicy: IfNotPresent
-      
+# Change below values for workflow controller
 workflowController:
-  image: "quay.io/argoproj/workflow-controller:v3.4.3"
-  executorImage: "quay.io/argoproj/argoexec:v3.4.3"
-
+  registry: "quay.io/argoproj"
+  image: "workflow-controller:v3.4.3"
+  executorImage: "argoexec:v3.4.3"
+  IMDSv1Image: "workflow-controller:v3.0.7"
+  IMDSv1ExecutorImage: "argoexec:v3.0.7"
 security:
   imageScanner:
-    image: "quay.io/devtron/image-scanner:abb1e033-334-19909"
-
+    image: "image-scanner:0a3d5e84-141-28953"
+    configs:
+      TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db
+      TRIVY_JAVA_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-java-db
+  clair:
+    image:
+      repository: clair
+      tag: 4.3.6
+# Values for notifier integration
 notifier:
-  image: "quay.io/devtron/notifier:d71bcbcd-372-18717"
+  image: "notifier:9aa5e510-372-28961"
+minio:
+  image: "minio:RELEASE.2021-02-14T04-01-33Z"
+  mbImage: "minio-mc:RELEASE.2021-02-14T04-28-06Z"
+  gatewayImage: "minio:RELEASE.2020-12-03T05-49-24Z"
+# Values for grafana integration
+monitoring:
+  grafana:
+    registry: ""
+    image: "grafana:7.3.1"
+    busyboxImage: "busybox:1.31.1"
+    batsImage: "bats:v1.4.1"
+    imagePullPolicy: IfNotPresent
+    grafanaOrgJob:
+      curlImage: k8s-utils:tutum-curl
+    grafanaDashboards:
+      image: "k8s-sidecar:1.1.0"
+      curlImage: "curl:7.73.0"
+      imagePullPolicy: IfNotPresent
+devtronEnterprise:
+  enabled: false
+  casbin:
+    registry: ""
+    image: "casbin:efc28fb2-6de0e914-462-25420"
+    imagePullPolicy: IfNotPresent
+    configs:
+      PG_ADDR: postgresql-postgresql.devtroncd
+      PG_DATABASE: casbin
+      PG_PORT: "5432"
+      PG_USER: postgres
+    dbconfig:
+      secretName: postgresql-postgresql
+      keyName: postgresql-password
+    resources: {}
+  scoop:
+    enabled: false
+    registry: ""
+    image: "scoop:296d351d-629-24001"
+    imagePullPolicy: IfNotPresent
+    resources: {}
+    configs:
+      CLUSTER_ID: "1"
+      ORCHESTRATOR_URL: http://devtron-service.devtroncd.svc.cluster.local/orchestrator

@@ -1,13 +1,24 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package chart
 
 import (
 	"encoding/json"
 	"github.com/devtron-labs/devtron/internal/sql/models"
-)
-
-const (
-	CHART_ALREADY_EXISTS_INTERNAL_ERROR = "Chart exists already, try uploading another chart"
-	CHART_NAME_RESERVED_INTERNAL_ERROR  = "Change the name of the chart and try uploading again"
 )
 
 var ReservedChartRefNamesList *[]ReservedChartList
@@ -32,14 +43,11 @@ type TemplateRequest struct {
 	Readme                  string                      `json:"readme"`
 	IsBasicViewLocked       bool                        `json:"isBasicViewLocked"`
 	CurrentViewEditor       models.ChartsViewEditorType `json:"currentViewEditor"` //default "UNDEFINED" in db
+	GitRepoUrl              string                      `json:"-"`
+	IsCustomGitRepository   bool                        `json:"-"`
 	UserId                  int32                       `json:"-"`
-}
-
-type AppMetricEnableDisableRequest struct {
-	AppId               int   `json:"appId,omitempty"`
-	EnvironmentId       int   `json:"environmentId,omitempty"`
-	IsAppMetricsEnabled bool  `json:"isAppMetricsEnabled"`
-	UserId              int32 `json:"-"`
+	LatestChartVersion      string                      `json:"-"`
+	ImageDescriptorTemplate string                      `json:"-"`
 }
 
 type ChartUpgradeRequest struct {

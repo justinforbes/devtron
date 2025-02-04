@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package clusterTerminalAccess
 
 import (
@@ -7,14 +23,16 @@ import (
 	"fmt"
 	"github.com/caarlos0/env/v6"
 	k8s2 "github.com/devtron-labs/common-lib/utils/k8s"
-	client "github.com/devtron-labs/devtron/api/helm-app"
+	"github.com/devtron-labs/devtron/api/helm-app/service/bean"
 	"github.com/devtron-labs/devtron/internal/sql/models"
 	"github.com/devtron-labs/devtron/internal/sql/repository"
 	utils1 "github.com/devtron-labs/devtron/pkg/clusterTerminalAccess/clusterTerminalUtils"
 	"github.com/devtron-labs/devtron/pkg/k8s"
+	bean2 "github.com/devtron-labs/devtron/pkg/k8s/bean"
 	"github.com/devtron-labs/devtron/pkg/k8s/capacity"
 	"github.com/devtron-labs/devtron/pkg/terminal"
 	"github.com/devtron-labs/devtron/util"
+	cron3 "github.com/devtron-labs/devtron/util/cron"
 	"github.com/go-pg/pg"
 	"github.com/robfig/cron/v3"
 	"github.com/yannh/kubeconform/pkg/resource"
@@ -43,6 +61,7 @@ type UserTerminalAccessService interface {
 	FetchPodEvents(ctx context.Context, userTerminalAccessId int) (*models.UserTerminalPodEvents, error)
 	ValidateShell(podName, namespace, shellName, containerName string, clusterId int) (bool, string, error)
 	EditTerminalPodManifest(ctx context.Context, request *models.UserTerminalSessionRequest, override bool) (ManifestEditResponse, error)
+	GetTerminalAccessSessionDataFromCacheById(terminalAccessId int) (*models.UserTerminalAccessData, bool)
 }
 
 type UserTerminalAccessServiceImpl struct {
@@ -55,7 +74,7 @@ type UserTerminalAccessServiceImpl struct {
 	K8sCommonService             k8s.K8sCommonService
 	terminalSessionHandler       terminal.TerminalSessionHandler
 	K8sCapacityService           capacity.K8sCapacityService
-	k8sUtil                      *k8s2.K8sUtil
+	k8sUtil                      *k8s2.K8sServiceImpl
 }
 
 type UserTerminalAccessSessionData struct {
@@ -79,9 +98,9 @@ func GetTerminalAccessConfig() (*models.UserTerminalSessionConfig, error) {
 	return config, err
 }
 
-func NewUserTerminalAccessServiceImpl(logger *zap.SugaredLogger, terminalAccessRepository repository.TerminalAccessRepository, config *models.UserTerminalSessionConfig, k8sCommonService k8s.K8sCommonService, terminalSessionHandler terminal.TerminalSessionHandler, K8sCapacityService capacity.K8sCapacityService, k8sUtil *k8s2.K8sUtil) (*UserTerminalAccessServiceImpl, error) {
+func NewUserTerminalAccessServiceImpl(logger *zap.SugaredLogger, terminalAccessRepository repository.TerminalAccessRepository, config *models.UserTerminalSessionConfig, k8sCommonService k8s.K8sCommonService, terminalSessionHandler terminal.TerminalSessionHandler, K8sCapacityService capacity.K8sCapacityService, k8sUtil *k8s2.K8sServiceImpl, cronLogger *cron3.CronLoggerImpl) (*UserTerminalAccessServiceImpl, error) {
 	//fetches all running and starting entities from db and start SyncStatus
-	podStatusSyncCron := cron.New(cron.WithChain())
+	podStatusSyncCron := cron.New(cron.WithChain(cron.Recover(cronLogger)))
 	terminalAccessDataArrayMutex := &sync.RWMutex{}
 	map1 := make(map[int]*UserTerminalAccessSessionData)
 	accessServiceImpl := &UserTerminalAccessServiceImpl{
@@ -339,7 +358,7 @@ func (impl *UserTerminalAccessServiceImpl) DisconnectTerminalSession(ctx context
 	namespace := metadataMap["Namespace"]
 	err = impl.DeleteTerminalPod(ctx, terminalAccessData.ClusterId, terminalAccessData.PodName, namespace)
 	if err != nil {
-		if isResourceNotFoundErr(err) {
+		if k8s.IsResourceNotFoundErr(err) {
 			accessSessionData.terminateTriggered = true
 			err = nil
 		}
@@ -347,19 +366,6 @@ func (impl *UserTerminalAccessServiceImpl) DisconnectTerminalSession(ctx context
 		accessSessionData.terminateTriggered = true
 	}
 	return err
-}
-
-func getErrorDetailedMessage(err error) string {
-	if errStatus, ok := err.(*k8sErrors.StatusError); ok {
-		return errStatus.Status().Message
-	}
-	return ""
-}
-func isResourceNotFoundErr(err error) bool {
-	if errStatus, ok := err.(*k8sErrors.StatusError); ok && errStatus.Status().Reason == metav1.StatusReasonNotFound {
-		return true
-	}
-	return false
 }
 
 func (impl *UserTerminalAccessServiceImpl) StopTerminalSession(ctx context.Context, userTerminalAccessId int) {
@@ -398,7 +404,7 @@ func (impl *UserTerminalAccessServiceImpl) closeAndCleanTerminalSession(accessSe
 }
 
 func (impl *UserTerminalAccessServiceImpl) closeSession(sessionId string) {
-	impl.terminalSessionHandler.Close(sessionId, 1, "Process exited")
+	impl.terminalSessionHandler.Close(sessionId, 1, terminal.ProcessExitedMsg)
 }
 
 func (impl *UserTerminalAccessServiceImpl) extractMetadataString(request *models.UserTerminalSessionRequest) string {
@@ -517,8 +523,8 @@ func (impl *UserTerminalAccessServiceImpl) SyncPodStatus() {
 			impl.deleteClusterTerminalTemplates(context.Background(), terminalAccessData.ClusterId, terminalAccessData.PodName, namespace)
 			err = impl.DeleteTerminalPod(context.Background(), terminalAccessData.ClusterId, terminalAccessData.PodName, namespace)
 			if err != nil {
-				if isResourceNotFoundErr(err) {
-					errorDetailedMessage := getErrorDetailedMessage(err)
+				if k8s.IsResourceNotFoundErr(err) {
+					errorDetailedMessage := k8s.GetClientErrorMessage(err)
 					terminalPodStatusString = fmt.Sprintf("%s/%s", string(models.TerminalPodTerminated), errorDetailedMessage)
 				} else {
 					continue
@@ -737,7 +743,7 @@ func (impl *UserTerminalAccessServiceImpl) DeleteTerminalResource(ctx context.Co
 			},
 		},
 	}
-	resourceRequest := &k8s.ResourceRequestBean{
+	resourceRequest := &bean2.ResourceRequestBean{
 		K8sRequest: k8sRequest,
 		ClusterId:  clusterId,
 	}
@@ -771,7 +777,7 @@ func (impl *UserTerminalAccessServiceImpl) applyTemplate(ctx context.Context, cl
 			},
 		},
 	}
-	request := &k8s.ResourceRequestBean{
+	request := &bean2.ResourceRequestBean{
 		K8sRequest: k8sRequest,
 		ClusterId:  clusterId,
 	}
@@ -829,8 +835,8 @@ func (impl *UserTerminalAccessServiceImpl) getPodManifest(ctx context.Context, c
 	}
 	response, err := impl.K8sCommonService.GetResource(ctx, request)
 	if err != nil {
-		if isResourceNotFoundErr(err) {
-			errorDetailedMessage := getErrorDetailedMessage(err)
+		if k8s.IsResourceNotFoundErr(err) {
+			errorDetailedMessage := k8s.GetClientErrorMessage(err)
 			terminalPodStatusString := fmt.Sprintf("%s/%s", string(models.TerminalPodTerminated), errorDetailedMessage)
 			return nil, errors.New(terminalPodStatusString)
 		} else {
@@ -838,10 +844,10 @@ func (impl *UserTerminalAccessServiceImpl) getPodManifest(ctx context.Context, c
 			return nil, err
 		}
 	}
-	return response, nil
+	return response.ManifestResponse, nil
 }
 
-func (impl *UserTerminalAccessServiceImpl) getPodRequestBean(clusterId int, podName string, namespace string) (*k8s.ResourceRequestBean, error) {
+func (impl *UserTerminalAccessServiceImpl) getPodRequestBean(clusterId int, podName string, namespace string) (*bean2.ResourceRequestBean, error) {
 	terminalAccessPodTemplate, err := impl.TerminalAccessRepository.FetchTerminalAccessTemplate(models.TerminalAccessPodTemplateName)
 	if err != nil {
 		impl.Logger.Errorw("error occurred while fetching template", "template", models.TerminalAccessPodTemplateName, "err", err)
@@ -853,9 +859,9 @@ func (impl *UserTerminalAccessServiceImpl) getPodRequestBean(clusterId int, podN
 		impl.Logger.Errorw("error occurred while extracting data for gvk", "gvkDataString", gvkDataString, "err", err)
 		return nil, err
 	}
-	request := &k8s.ResourceRequestBean{
+	request := &bean2.ResourceRequestBean{
 		ClusterId: clusterId,
-		AppIdentifier: &client.AppIdentifier{
+		AppIdentifier: &bean.AppIdentifier{
 			ClusterId: clusterId,
 		},
 		K8sRequest: &k8s2.K8sRequestBean{
@@ -876,7 +882,9 @@ func (impl *UserTerminalAccessServiceImpl) getPodRequestBean(clusterId int, podN
 func (impl *UserTerminalAccessServiceImpl) SyncRunningInstances() {
 	terminalAccessData, err := impl.TerminalAccessRepository.GetAllRunningUserTerminalData()
 	if err != nil {
-		impl.Logger.Fatalw("error occurred while fetching all running/starting data", "err", err)
+		// todo - should add retry with backoff time
+		impl.Logger.Errorw("error occurred while fetching all running/starting data", "err", err)
+		return
 	}
 	impl.TerminalAccessDataArrayMutex.Lock()
 	defer impl.TerminalAccessDataArrayMutex.Unlock()
@@ -1130,7 +1138,7 @@ func (impl *UserTerminalAccessServiceImpl) EditTerminalPodManifest(ctx context.C
 func (impl *UserTerminalAccessServiceImpl) checkOtherPodExists(ctx context.Context, podName, namespace string, clusterId int) bool {
 	podRequestBean, _ := impl.getPodRequestBean(clusterId, podName, namespace)
 	res, _ := impl.K8sCommonService.GetResource(ctx, podRequestBean)
-	if res != nil {
+	if res != nil && res.ManifestResponse != nil {
 		return true
 	}
 	return false
@@ -1145,7 +1153,7 @@ func (impl *UserTerminalAccessServiceImpl) forceDeletePod(ctx context.Context, p
 	}
 	podRequestBean.K8sRequest.ForceDelete = true
 	_, err = impl.K8sCommonService.DeleteResource(ctx, podRequestBean)
-	if err != nil && !isResourceNotFoundErr(err) {
+	if err != nil && !k8s.IsResourceNotFoundErr(err) {
 		return false
 	}
 	return true
@@ -1256,4 +1264,11 @@ func (impl *UserTerminalAccessServiceImpl) GenerateNodeDebugPod(o *models.UserTe
 
 	err = impl.applyTemplate(context.Background(), o.ClusterId, podTemplate, podTemplate, false, o.Namespace)
 	return debugPod, err
+}
+
+func (impl *UserTerminalAccessServiceImpl) GetTerminalAccessSessionDataFromCacheById(terminalAccessId int) (*models.UserTerminalAccessData, bool) {
+	terminalAccessDataMap := *impl.TerminalAccessSessionDataMap
+	terminalAccessSessionData, present := terminalAccessDataMap[terminalAccessId]
+
+	return terminalAccessSessionData.terminalAccessDataEntity, present
 }

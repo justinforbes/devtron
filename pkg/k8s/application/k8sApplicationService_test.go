@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package application
 
 import (
@@ -5,11 +21,11 @@ import (
 	"encoding/json"
 	"fmt"
 	k8s2 "github.com/devtron-labs/common-lib/utils/k8s"
-	client "github.com/devtron-labs/devtron/api/helm-app"
-	"github.com/devtron-labs/devtron/pkg/cluster"
-	"github.com/devtron-labs/devtron/pkg/cluster/repository"
-	"github.com/devtron-labs/devtron/pkg/k8s"
+	helmBean "github.com/devtron-labs/devtron/api/helm-app/service/bean"
+	bean2 "github.com/devtron-labs/devtron/pkg/cluster/bean"
+	"github.com/devtron-labs/devtron/pkg/cluster/environment/repository"
 	"github.com/devtron-labs/devtron/pkg/k8s/application/bean"
+	bean3 "github.com/devtron-labs/devtron/pkg/k8s/bean"
 	"github.com/stretchr/testify/mock"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -84,67 +100,67 @@ type NewClusterServiceMock struct {
 	mock.Mock
 }
 
-func (n NewClusterServiceMock) Save(parent context.Context, bean *cluster.ClusterBean, userId int32) (*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) Save(parent context.Context, bean *bean2.ClusterBean, userId int32) (*bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindOne(clusterName string) (*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindOne(clusterName string) (*bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindOneActive(clusterName string) (*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindOneActive(clusterName string) (*bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindAll() ([]*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindAll() ([]*bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindAllActive() ([]cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindAllActive() ([]bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) DeleteFromDb(bean *cluster.ClusterBean, userId int32) error {
+func (n NewClusterServiceMock) DeleteFromDb(bean *bean2.ClusterBean, userId int32) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindById(id int) (*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindById(id int) (*bean2.ClusterBean, error) {
 	//TODO implement me
-	return &cluster.ClusterBean{}, nil
+	return &bean2.ClusterBean{}, nil
 }
 
-func (n NewClusterServiceMock) FindByIds(id []int) ([]cluster.ClusterBean, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (n NewClusterServiceMock) Update(ctx context.Context, bean *cluster.ClusterBean, userId int32) (*cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) FindByIds(id []int) ([]bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) Delete(bean *cluster.ClusterBean, userId int32) error {
+func (n NewClusterServiceMock) Update(ctx context.Context, bean *bean2.ClusterBean, userId int32) (*bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) FindAllForAutoComplete() ([]cluster.ClusterBean, error) {
+func (n NewClusterServiceMock) Delete(bean *bean2.ClusterBean, userId int32) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) CreateGrafanaDataSource(clusterBean *cluster.ClusterBean, env *repository.Environment) (int, error) {
+func (n NewClusterServiceMock) FindAllForAutoComplete() ([]bean2.ClusterBean, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (n NewClusterServiceMock) GetClusterConfig(cluster *cluster.ClusterBean) (*k8s2.ClusterConfig, error) {
+func (n NewClusterServiceMock) CreateGrafanaDataSource(clusterBean *bean2.ClusterBean, env *repository.Environment) (int, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (n NewClusterServiceMock) GetClusterConfig(cluster *bean2.ClusterBean) (*k8s2.ClusterConfig, error) {
 	//TODO implement me
 	panic("implement me")
 }
@@ -224,9 +240,9 @@ func (n NewK8sClientServiceImplMock) ListEvents(restConfig *rest.Config, request
 //		})
 //
 // }
-func generateTestResourceRequest(kind string) k8s.ResourceRequestBean {
-	return k8s.ResourceRequestBean{
-		AppIdentifier: &client.AppIdentifier{},
+func generateTestResourceRequest(kind string) bean3.ResourceRequestBean {
+	return bean3.ResourceRequestBean{
+		AppIdentifier: &helmBean.AppIdentifier{},
 		K8sRequest: &k8s2.K8sRequestBean{
 			ResourceIdentifier: k8s2.ResourceIdentifier{
 				GroupVersionKind: schema.GroupVersionKind{

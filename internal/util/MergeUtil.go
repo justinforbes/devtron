@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package util
@@ -20,7 +19,7 @@ package util
 import (
 	"encoding/json"
 	"github.com/devtron-labs/devtron/api/bean"
-	"github.com/devtron-labs/devtron/util"
+	globalUtil "github.com/devtron-labs/devtron/util"
 	jsonpatch "github.com/evanphx/json-patch"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
@@ -123,7 +122,23 @@ func (m MergeUtil) ConfigMapMerge(appLevelConfigMapJson string, envLevelConfigMa
 	return string(byteData), err
 }
 
-func (m MergeUtil) ConfigSecretMerge(appLevelSecretJson string, envLevelSecretJson string, chartMajorVersion int, chartMinorVersion int, isJob bool) (data string, err error) {
+func (m MergeUtil) ConfigSecretMergeForJob(appLevelSecretJson, envLevelSecretJson string) (data string, err error) {
+	return m.configSecretMerge(appLevelSecretJson, envLevelSecretJson, "", true)
+}
+
+func (m MergeUtil) ConfigSecretMergeForCDStages(appLevelSecretJson, envLevelSecretJson, chartVersion string) (data string, err error) {
+	return m.configSecretMerge(appLevelSecretJson, envLevelSecretJson, chartVersion, false)
+}
+
+func (m MergeUtil) configSecretMerge(appLevelSecretJson string, envLevelSecretJson string, chartVersion string, isJob bool) (data string, err error) {
+	var chartMajorVersion, chartMinorVersion int
+	if chartVersion != "" {
+		chartMajorVersion, chartMinorVersion, err = globalUtil.ExtractChartVersion(chartVersion)
+		if err != nil {
+			m.Logger.Errorw("chart version parsing", "err", err)
+			return "", err
+		}
+	}
 	appLevelSecret := bean.ConfigSecretJson{}
 	if appLevelSecretJson != "" {
 		err = json.Unmarshal([]byte(appLevelSecretJson), &appLevelSecret)
@@ -174,7 +189,7 @@ func mergeConfigMapsAndSecrets(envLevelCMCS []bean.ConfigSecretMap, appLevelSecr
 }
 
 func (m MergeUtil) processExternalSecrets(secret bean.ConfigSecretMap, chartMajorVersion int, chartMinorVersion int, isJob bool) bean.ConfigSecretMap {
-	if secret.ExternalType == util.AWSSecretsManager || secret.ExternalType == util.AWSSystemManager || secret.ExternalType == util.HashiCorpVault {
+	if secret.ExternalType == globalUtil.AWSSecretsManager || secret.ExternalType == globalUtil.AWSSystemManager || secret.ExternalType == globalUtil.HashiCorpVault {
 		if secret.SecretData != nil && ((chartMajorVersion <= 3 && chartMinorVersion < 8) || isJob) {
 			var es []map[string]interface{}
 			esNew := make(map[string]interface{})

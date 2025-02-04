@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package repository
 
 import (
@@ -36,9 +52,11 @@ type ImageTagRepository interface {
 	DeleteByEntityKeyAndValue(entityKey int, entityValue string) error
 	DeactivateImagePathReservation(id int) error
 	FetchActiveCustomTagData(entityKey int, entityValue string) (*CustomTag, error)
+	FetchActiveCustomTagDataList(entityValues []string) ([]*CustomTag, error)
 	DeactivateImagePathReservationByImagePaths(tx *pg.Tx, imagePaths []string) error
 	DeactivateImagePathReservationByImagePathReservationIds(tx *pg.Tx, imagePathReservationIds []int) error
 	DisableCustomTag(entityKey int, entityValue string) error
+	GetImagePathsByIds(ids []int) ([]*ImagePathReservation, error)
 }
 
 type ImageTagRepositoryImpl struct {
@@ -91,6 +109,17 @@ func (impl *ImageTagRepositoryImpl) FetchActiveCustomTagData(entityType int, ent
 	return &customTagData, err
 }
 
+func (impl *ImageTagRepositoryImpl) FetchActiveCustomTagDataList(entityValues []string) ([]*CustomTag, error) {
+	var customTagList []*CustomTag
+	if len(entityValues) == 0 {
+		return customTagList, nil
+	}
+	err := impl.dbConnection.Model(&customTagList).
+		Where("entity_value IN (?)", pg.In(entityValues)).
+		Where("active = ?", true).Select()
+	return customTagList, err
+}
+
 func (impl *ImageTagRepositoryImpl) IncrementAndFetchByEntityKeyAndValue(tx *pg.Tx, entityKey int, entityValue string) (*CustomTag, error) {
 	var customTag CustomTag
 	query := `update custom_tag set auto_increasing_number=auto_increasing_number+1 where entity_key=? and entity_value=? and active = ? returning id, tag_pattern, auto_increasing_number, entity_key, entity_value`
@@ -111,6 +140,9 @@ func (impl *ImageTagRepositoryImpl) InsertImagePath(tx *pg.Tx, reservation *Imag
 }
 
 func (impl *ImageTagRepositoryImpl) DeactivateImagePathReservationByImagePaths(tx *pg.Tx, imagePaths []string) error {
+	if len(imagePaths) == 0 {
+		return nil
+	}
 	query := `UPDATE image_path_reservation set active=false where image_path in (?)`
 	_, err := tx.Exec(query, pg.In(imagePaths))
 	if err != nil && err != pg.ErrNoRows {
@@ -132,4 +164,14 @@ func (impl *ImageTagRepositoryImpl) DisableCustomTag(entityKey int, entityValue 
 	query := `update custom_tag set enabled = false where entity_key = ? and entity_value = ?`
 	_, err := impl.dbConnection.Exec(query, entityKey, entityValue)
 	return err
+}
+func (impl *ImageTagRepositoryImpl) GetImagePathsByIds(ids []int) ([]*ImagePathReservation, error) {
+	var imagePaths []*ImagePathReservation
+	if len(ids) == 0 {
+		return imagePaths, nil
+	}
+	err := impl.dbConnection.Model(&imagePaths).
+		Where("id in (?) ", pg.In(ids)).
+		Where("active = ?", true).Select()
+	return imagePaths, err
 }

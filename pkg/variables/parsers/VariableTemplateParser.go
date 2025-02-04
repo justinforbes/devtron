@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package parsers
 
 import (
@@ -111,6 +127,10 @@ func (impl *VariableTemplateParserImpl) handlePrimitivesForJson(parserRequest Va
 
 func (impl *VariableTemplateParserImpl) ExtractVariables(template string, templateType VariableTemplateType) ([]string, error) {
 	var variables []string
+
+	if template == "" {
+		return variables, nil
+	}
 
 	if !impl.variableTemplateParserConfig.ScopedVariableEnabled {
 		return variables, nil
@@ -290,7 +310,7 @@ func (impl *VariableTemplateParserImpl) convertToHclCompatible(templateType Vari
 	if templateType == StringVariableTemplate {
 		jsonStringify, err := json.Marshal(template)
 		if err != nil {
-			impl.logger.Errorw("error occurred while marshalling template, but continuing with the template", "err", err, "templateType", templateType, "template", template)
+			impl.logger.Errorw("error occurred while marshalling template, but continuing with the template", "err", err, "templateType", templateType)
 			//return "", errors.New(InvalidTemplate)
 		} else {
 			template = string(jsonStringify)

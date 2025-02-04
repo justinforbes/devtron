@@ -1,8 +1,26 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package appbean
 
 import (
+	"github.com/devtron-labs/devtron/internal/sql/constants"
 	"github.com/devtron-labs/devtron/internal/sql/models"
 	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig"
+	bean2 "github.com/devtron-labs/devtron/pkg/build/pipeline/bean"
 	"github.com/devtron-labs/devtron/pkg/chartRepo/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/bean"
 )
@@ -45,11 +63,11 @@ type GitMaterial struct {
 }
 
 type DockerConfig struct {
-	DockerRegistry    string                  `json:"dockerRegistry" validate:"required"`
-	DockerRepository  string                  `json:"dockerRepository" validate:"required"`
-	CiBuildConfig     *bean.CiBuildConfigBean `json:"ciBuildConfig"`
-	DockerBuildConfig *DockerBuildConfig      `json:"dockerBuildConfig,omitempty"` // Deprecated, should use CiBuildConfig for development
-	CheckoutPath      string                  `json:"checkoutPath"`
+	DockerRegistry    string                   `json:"dockerRegistry" validate:"required"`
+	DockerRepository  string                   `json:"dockerRepository" validate:"required"`
+	CiBuildConfig     *bean2.CiBuildConfigBean `json:"ciBuildConfig"`
+	DockerBuildConfig *DockerBuildConfig       `json:"dockerBuildConfig,omitempty"` // Deprecated, should use CiBuildConfig for development
+	CheckoutPath      string                   `json:"checkoutPath"`
 }
 
 type DockerBuildConfig struct {
@@ -94,10 +112,10 @@ type CiPipelineDetails struct {
 }
 
 type CiPipelineMaterialConfig struct {
-	Type          pipelineConfig.SourceType `json:"type,omitempty" validate:"oneof=SOURCE_TYPE_BRANCH_FIXED SOURCE_TYPE_BRANCH_REGEX SOURCE_TYPE_TAG_ANY WEBHOOK"`
-	Value         string                    `json:"value,omitempty" `
-	CheckoutPath  string                    `json:"checkoutPath"`
-	GitMaterialId int                       `json:"gitMaterialId"`
+	Type          constants.SourceType `json:"type,omitempty" validate:"oneof=SOURCE_TYPE_BRANCH_FIXED SOURCE_TYPE_BRANCH_REGEX SOURCE_TYPE_TAG_ANY WEBHOOK"`
+	Value         string               `json:"value,omitempty" `
+	CheckoutPath  string               `json:"checkoutPath"`
+	GitMaterialId int                  `json:"gitMaterialId"`
 }
 
 type BuildScript struct {
@@ -162,9 +180,10 @@ type Secret struct {
 }
 
 type ConfigMapSecretDataVolumeUsageConfig struct {
-	MountPath      string `json:"mountPath"`
-	SubPath        bool   `json:"subPath"`
-	FilePermission string `json:"filePermission"`
+	MountPath      string   `json:"mountPath"`
+	SubPath        bool     `json:"subPath"`
+	FilePermission string   `json:"filePermission"`
+	ESOSubPath     []string `json:"esoSubPath"`
 }
 
 type ExternalSecret struct {

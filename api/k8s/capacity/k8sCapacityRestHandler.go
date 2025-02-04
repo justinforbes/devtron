@@ -1,18 +1,42 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package capacity
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/devtron-labs/common-lib/utils"
+	bean2 "github.com/devtron-labs/devtron/pkg/cluster/bean"
+	"github.com/devtron-labs/devtron/pkg/cluster/environment"
+	"github.com/devtron-labs/devtron/pkg/cluster/rbac"
+	"github.com/devtron-labs/devtron/pkg/cluster/read"
+	bean3 "github.com/devtron-labs/devtron/pkg/k8s/bean"
+	"net/http"
+	"strconv"
+
 	"github.com/devtron-labs/devtron/api/restHandler/common"
+	"github.com/devtron-labs/devtron/pkg/auth/authorisation/casbin"
+	"github.com/devtron-labs/devtron/pkg/auth/user"
 	"github.com/devtron-labs/devtron/pkg/cluster"
 	"github.com/devtron-labs/devtron/pkg/k8s/capacity"
 	"github.com/devtron-labs/devtron/pkg/k8s/capacity/bean"
-	"github.com/devtron-labs/devtron/pkg/user"
-	"github.com/devtron-labs/devtron/pkg/user/casbin"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
-	"net/http"
-	"strconv"
 )
 
 type K8sCapacityRestHandler interface {
@@ -33,16 +57,18 @@ type K8sCapacityRestHandlerImpl struct {
 	userService        user.UserService
 	enforcer           casbin.Enforcer
 	clusterService     cluster.ClusterService
-	environmentService cluster.EnvironmentService
-	clusterRbacService cluster.ClusterRbacService
+	environmentService environment.EnvironmentService
+	clusterRbacService rbac.ClusterRbacService
+	clusterReadService read.ClusterReadService
 }
 
 func NewK8sCapacityRestHandlerImpl(logger *zap.SugaredLogger,
 	k8sCapacityService capacity.K8sCapacityService, userService user.UserService,
 	enforcer casbin.Enforcer,
 	clusterService cluster.ClusterService,
-	environmentService cluster.EnvironmentService,
-	clusterRbacService cluster.ClusterRbacService) *K8sCapacityRestHandlerImpl {
+	environmentService environment.EnvironmentService,
+	clusterRbacService rbac.ClusterRbacService,
+	clusterReadService read.ClusterReadService) *K8sCapacityRestHandlerImpl {
 	return &K8sCapacityRestHandlerImpl{
 		logger:             logger,
 		k8sCapacityService: k8sCapacityService,
@@ -51,6 +77,7 @@ func NewK8sCapacityRestHandlerImpl(logger *zap.SugaredLogger,
 		clusterService:     clusterService,
 		environmentService: environmentService,
 		clusterRbacService: clusterRbacService,
+		clusterReadService: clusterReadService,
 	}
 }
 
@@ -68,7 +95,7 @@ func (handler *K8sCapacityRestHandlerImpl) GetClusterListRaw(w http.ResponseWrit
 		return
 	}
 	// RBAC enforcer applying
-	var authenticatedClusters []*cluster.ClusterBean
+	var authenticatedClusters []*bean2.ClusterBean
 	var clusterDetailList []*bean.ClusterCapacityDetail
 	for _, cluster := range clusters {
 		authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, true)
@@ -83,6 +110,8 @@ func (handler *K8sCapacityRestHandlerImpl) GetClusterListRaw(w http.ResponseWrit
 				Id:                cluster.Id,
 				Name:              cluster.ClusterName,
 				ErrorInConnection: cluster.ErrorInConnecting,
+				IsVirtualCluster:  cluster.IsVirtualCluster,
+				IsProd:            cluster.IsProd,
 			}
 			clusterDetailList = append(clusterDetailList, clusterDetail)
 		}
@@ -108,7 +137,7 @@ func (handler *K8sCapacityRestHandlerImpl) GetClusterListWithDetail(w http.Respo
 		return
 	}
 	// RBAC enforcer applying
-	var authenticatedClusters []*cluster.ClusterBean
+	var authenticatedClusters []*bean2.ClusterBean
 	for _, cluster := range clusters {
 		authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, true)
 		if err != nil {
@@ -148,13 +177,13 @@ func (handler *K8sCapacityRestHandlerImpl) GetClusterDetail(w http.ResponseWrite
 	}
 	token := r.Header.Get("token")
 	// RBAC enforcer applying
-	cluster, err := handler.clusterService.FindById(clusterId)
+	cluster, err := handler.clusterReadService.FindById(clusterId)
 	if err != nil {
 		handler.logger.Errorw("error in getting cluster by id", "err", err, "clusterId", clusterId)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
 		return
 	}
-	authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, false)
+	authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, true)
 	if err != nil {
 		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", clusterId)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
@@ -188,18 +217,13 @@ func (handler *K8sCapacityRestHandlerImpl) GetNodeList(w http.ResponseWriter, r 
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	cluster, err := handler.clusterService.FindById(clusterId)
+	cluster, err := handler.clusterReadService.FindById(clusterId)
 	if err != nil {
 		handler.logger.Errorw("error in getting cluster by id", "err", err, "clusterId", clusterId)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
 		return
 	}
-	authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, false)
-	if err != nil {
-		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", clusterId)
-		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-		return
-	}
+	authenticated := handler.clusterRbacService.CheckAuthorisationForNode(token, cluster.ClusterName, "", casbin.ActionGet)
 	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
@@ -234,18 +258,13 @@ func (handler *K8sCapacityRestHandlerImpl) GetNodeDetail(w http.ResponseWriter, 
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	cluster, err := handler.clusterService.FindById(clusterId)
+	cluster, err := handler.clusterReadService.FindById(clusterId)
 	if err != nil {
 		handler.logger.Errorw("error in getting cluster by id", "err", err, "clusterId", clusterId)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
 		return
 	}
-	authenticated, err := handler.clusterRbacService.CheckAuthorization(cluster.ClusterName, cluster.Id, token, userId, false)
-	if err != nil {
-		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", clusterId)
-		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
-		return
-	}
+	authenticated := handler.clusterRbacService.CheckAuthorisationForNode(token, cluster.ClusterName, name, casbin.ActionGet)
 	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
@@ -275,7 +294,13 @@ func (handler *K8sCapacityRestHandlerImpl) UpdateNodeManifest(w http.ResponseWri
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionUpdate, "*"); !ok {
+	authenticated, err := handler.clusterRbacService.CheckAuthorisationForNodeWithClusterId(token, manifestUpdateReq.ClusterId, manifestUpdateReq.Name, casbin.ActionUpdate)
+	if err != nil {
+		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", manifestUpdateReq.ClusterId)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -304,12 +329,27 @@ func (handler *K8sCapacityRestHandlerImpl) DeleteNode(w http.ResponseWriter, r *
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionDelete, "*"); !ok {
+	authenticated, err := handler.clusterRbacService.CheckAuthorisationForNodeWithClusterId(token, nodeDelReq.ClusterId, nodeDelReq.Name, casbin.ActionDelete)
+	if err != nil {
+		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", nodeDelReq.ClusterId)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
 	updatedManifest, err := handler.k8sCapacityService.DeleteNode(r.Context(), &nodeDelReq)
 	if err != nil {
+		errCode := http.StatusInternalServerError
+		if apiErr, ok := err.(*utils.ApiError); ok {
+			errCode = apiErr.HttpStatusCode
+			switch errCode {
+			case http.StatusNotFound:
+				errorMessage := bean3.ResourceNotFoundErr
+				err = fmt.Errorf("%s: %w", errorMessage, err)
+			}
+		}
 		handler.logger.Errorw("error in deleting node", "err", err, "deleteRequest", nodeDelReq)
 		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
 		return
@@ -333,7 +373,13 @@ func (handler *K8sCapacityRestHandlerImpl) CordonOrUnCordonNode(w http.ResponseW
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionUpdate, "*"); !ok {
+	authenticated, err := handler.clusterRbacService.CheckAuthorisationForNodeWithClusterId(token, nodeCordonReq.ClusterId, nodeCordonReq.Name, casbin.ActionUpdate)
+	if err != nil {
+		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", nodeCordonReq.ClusterId)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -362,7 +408,13 @@ func (handler *K8sCapacityRestHandlerImpl) DrainNode(w http.ResponseWriter, r *h
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionUpdate, "*"); !ok {
+	authenticated, err := handler.clusterRbacService.CheckAuthorisationForNodeWithClusterId(token, nodeDrainReq.ClusterId, nodeDrainReq.Name, casbin.ActionUpdate)
+	if err != nil {
+		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", nodeDrainReq.ClusterId)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}
@@ -391,7 +443,13 @@ func (handler *K8sCapacityRestHandlerImpl) EditNodeTaints(w http.ResponseWriter,
 	}
 	// RBAC enforcer applying
 	token := r.Header.Get("token")
-	if ok := handler.enforcer.Enforce(token, casbin.ResourceGlobal, casbin.ActionUpdate, "*"); !ok {
+	authenticated, err := handler.clusterRbacService.CheckAuthorisationForNodeWithClusterId(token, nodeTaintReq.ClusterId, nodeTaintReq.Name, casbin.ActionUpdate)
+	if err != nil {
+		handler.logger.Errorw("error in checking rbac for cluster", "err", err, "clusterId", nodeTaintReq.ClusterId)
+		common.WriteJsonResp(w, err, nil, http.StatusInternalServerError)
+		return
+	}
+	if !authenticated {
 		common.WriteJsonResp(w, errors.New("unauthorized"), nil, http.StatusForbidden)
 		return
 	}

@@ -18,7 +18,10 @@ Devtron supports 5 levels of access:
 3. **Admin**: Users with `admin` privileges can create, edit, delete, and view permitted applications in permitted projects.
 4. **Manager**: Users with `manager` privileges can do everything that an `admin` user can do. Additionally, they can also give and revoke access of users for the applications and environments of which they are the manager.
 5. **Super Admin**: Users with `super admin` privileges have unrestricted access to all the Devtron resources. Super Admins can create, modify, delete and view any Devtron resource without any restriction; it's like Superman without the weakness of Kryptonite. Moreover, they can add and delete user access across any Devtron resource, add delete git repository credentials, container registry credentials, cluster, and environment.
-6. **Approver**: Users with `approver` privileges have the authority to approve requests for image deployment. However, the user who built the image and/or requested approval cannot self-approve, even if they have approver or super-admin privileges.
+6. **Image approver**: Users with `Image approver` privileges have the authority to approve requests for image deployment.
+7. **Configuration approver**: Users with `Configuration approver` privileges have the authority to approve changes to protected configurations of Deployment Template, ConfigMaps, and Secrets. However, the user who proposed the changes cannot self-approve, even if they have configuration approver or super-admin privileges.
+8. **Artifact promoter**: Users with this privilege have the authority to approve promotion of [artifacts](../../reference/glossary.md#artifacts) directly to the target CD pipeline.
+
 
 ## User Roles And Permissions
 
@@ -94,7 +97,7 @@ In the `Email address` box, you have to provide the mail ID of the user to whom 
 
 ### Assign super admin permissions
 
-If you check the option `Assign super admin permissions`, the user will get full access to your system and the rest of the options will disappear. Please check [above](#access-levels) to see permission levels. Only users with super admin permissions can assign super admin permissions to a user.
+If you check the option `Assign super admin permissions`, the user will get full access to your system and the rest of the options will disappear. Please check [above](#role-based-access-levels) to see permission levels. Only users with super admin permissions can assign super admin permissions to a user.
 
 ![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/global-configurations/user-access/add-user-2.jpg)
 
@@ -134,7 +137,7 @@ Similarly, you can select `Applications` from the drop-down corresponding to you
 
   Inside the `Role`, you actually choose which type of permissions you want to give to the users.
 
-There are four different view access levels/Role available for both User and Group as described [above](#access-levels):
+There are four different view access levels/Role available for both User and Group as described [above](#role-based-access-levels):
 
 ![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/global-configurations/user-access/user-access-permission_1.JPG)
 
@@ -166,7 +169,7 @@ Similarly, you can select `Applications` from the drop-down corresponding to you
 
   Inside the `Role`, you actually choose which type of permissions you want to give to the users.
 
-There are four different view access levels/Role available for both User and Group as described [above](#access-levels):
+There are four different view access levels/Role available for both User and Group as described [above](#role-based-access-levels):
 
 ![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/global-configurations/user-access/user-access-permission_helm+app_2.JPG)
 

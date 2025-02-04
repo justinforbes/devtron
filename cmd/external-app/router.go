@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package main
 
 import (
@@ -7,21 +23,24 @@ import (
 	appStoreDeployment "github.com/devtron-labs/devtron/api/appStore/deployment"
 	appStoreDiscover "github.com/devtron-labs/devtron/api/appStore/discover"
 	appStoreValues "github.com/devtron-labs/devtron/api/appStore/values"
+	"github.com/devtron-labs/devtron/api/argoApplication"
+	"github.com/devtron-labs/devtron/api/auth/sso"
+	"github.com/devtron-labs/devtron/api/auth/user"
 	"github.com/devtron-labs/devtron/api/chartRepo"
 	"github.com/devtron-labs/devtron/api/cluster"
 	"github.com/devtron-labs/devtron/api/dashboardEvent"
 	"github.com/devtron-labs/devtron/api/externalLink"
+	"github.com/devtron-labs/devtron/api/fluxApplication"
 	client "github.com/devtron-labs/devtron/api/helm-app"
 	"github.com/devtron-labs/devtron/api/k8s/application"
 	"github.com/devtron-labs/devtron/api/k8s/capacity"
 	"github.com/devtron-labs/devtron/api/module"
 	"github.com/devtron-labs/devtron/api/restHandler/common"
 	"github.com/devtron-labs/devtron/api/router"
+	"github.com/devtron-labs/devtron/api/router/app"
 	"github.com/devtron-labs/devtron/api/server"
-	"github.com/devtron-labs/devtron/api/sso"
 	"github.com/devtron-labs/devtron/api/team"
 	"github.com/devtron-labs/devtron/api/terminal"
-	"github.com/devtron-labs/devtron/api/user"
 	webhookHelm "github.com/devtron-labs/devtron/api/webhook/helm"
 	"github.com/devtron-labs/devtron/client/dashboard"
 	"github.com/devtron-labs/devtron/util"
@@ -61,8 +80,10 @@ type MuxRouter struct {
 	telemetryRouter          router.TelemetryRouter
 	userTerminalAccessRouter terminal.UserTerminalAccessRouter
 	attributesRouter         router.AttributesRouter
-	appRouter                router.AppRouter
+	appRouter                app.AppRouterEAMode
 	rbacRoleRouter           user.RbacRoleRouter
+	argoApplicationRouter    argoApplication.ArgoApplicationRouter
+	fluxApplicationRouter    fluxApplication.FluxApplicationRouter
 }
 
 func NewMuxRouter(
@@ -93,8 +114,8 @@ func NewMuxRouter(
 	telemetryRouter router.TelemetryRouter,
 	userTerminalAccessRouter terminal.UserTerminalAccessRouter,
 	attributesRouter router.AttributesRouter,
-	appRouter router.AppRouter,
-	rbacRoleRouter user.RbacRoleRouter,
+	appRouter app.AppRouterEAMode,
+	rbacRoleRouter user.RbacRoleRouter, argoApplicationRouter argoApplication.ArgoApplicationRouter, fluxApplicationRouter fluxApplication.FluxApplicationRouter,
 ) *MuxRouter {
 	r := &MuxRouter{
 		Router:                   mux.NewRouter(),
@@ -128,6 +149,8 @@ func NewMuxRouter(
 		attributesRouter:         attributesRouter,
 		appRouter:                appRouter,
 		rbacRoleRouter:           rbacRoleRouter,
+		argoApplicationRouter:    argoApplicationRouter,
+		fluxApplicationRouter:    fluxApplicationRouter,
 	}
 	return r
 }
@@ -186,8 +209,8 @@ func (r *MuxRouter) Init() {
 	r.helmAppRouter.InitAppListRouter(HelmApplicationSubRouter)
 	r.commonDeploymentRouter.Init(HelmApplicationSubRouter)
 
-	ApplicationSubRouter := r.Router.PathPrefix("/orchestrator/app").Subrouter()
-	r.appRouter.InitAppRouter(ApplicationSubRouter)
+	applicationSubRouter := r.Router.PathPrefix("/orchestrator/app").Subrouter()
+	r.appRouter.InitAppRouterEAMode(applicationSubRouter)
 
 	k8sApp := r.Router.PathPrefix("/orchestrator/k8s").Subrouter()
 	r.k8sApplicationRouter.InitK8sApplicationRouter(k8sApp)
@@ -260,4 +283,9 @@ func (r *MuxRouter) Init() {
 
 	attributeRouter := r.Router.PathPrefix("/orchestrator/attributes").Subrouter()
 	r.attributesRouter.InitAttributesRouter(attributeRouter)
+
+	argoApplicationRouter := r.Router.PathPrefix("/orchestrator/argo-application").Subrouter()
+	r.argoApplicationRouter.InitArgoApplicationRouter(argoApplicationRouter)
+	fluxApplicationRouter := r.Router.PathPrefix("/orchestrator/flux-application").Subrouter()
+	r.fluxApplicationRouter.InitFluxApplicationRouter(fluxApplicationRouter)
 }

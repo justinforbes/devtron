@@ -1,156 +1,134 @@
 # Security Features
 
-Devtron provides strong security features that help identify vulnerabilities in container images. The system scans container images thoroughly and generates reports if any vulnerabilities are found. 
+## Introduction
 
-Within the CI pipeline of Devtron, there is an option called [**Scan for vulnerabilities**](creating-application/workflow/ci-pipeline.md#scan-for-vulnerabilities). 
+Devtron provides [DevSecOps](https://devtron.ai/product/devsecops) capabilities across your software development life cycle for both: the default CI/CD solution by Devtron as well as your existing CI/CD Tools.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/enable-image-scan.jpg)
+One of the key components of DevSecOps is the detection of security risks. Currently, Devtron supports the following types of scanning:
 
-By enabling this option, the system automatically scans the container image after the image build stage. It then generates a report that highlights all the vulnerabilities present within the image. To access the scan report of all builds with vulnerability scans enabled, simply navigate to the 'Security' tab on the dashboard. There you can conveniently view the build history and all the vulnerabilities detected in the build image.
+* Image Scan
+* Code Scan 
+* Kubernetes Manifest Scan
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/scan-report-on-build-history.jpg)
+![Figure 1: Security Scan Results](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/security-scan.jpg)
 
-The scan report provides a comprehensive overview of any vulnerabilities present in the image. This allows you to identify and address potential security risks effectively. By leveraging this feature, you can ensure that your containerized applications are safeguarded against known vulnerabilities.
+You can integrate a scanning tool of your choice. By default, Devtron integrates with Trivy using which you can scan for the following issues:
 
-Devtron's Security Feature consists of two primary components:
+* Vulnerability
+* License Risks
+* Misconfigurations
+* Exposed Secrets
 
-1. **Security Scans**
-2. **Security Policies**
+---
 
-## Security Scans
+## Where to Initiate the Scan
 
-Devtron's security scans provide comprehensive scan reports for all applications that have undergone vulnerability scanning. These reports offer a detailed overview of the security status of each scanned application.
+### Before Building Artifact
 
-These comprehensive scan reports provide valuable insights, including information about identified vulnerabilities, their severity levels, and any corresponding Common Vulnerabilities and Exposures (CVE) entries.
+When you commit the code, it's essential to scan it before building a [container image](../reference/glossary.md#image). By scanning early, you can catch and fix problems before they become expensive or time-consuming to remediate later. 
 
-## Security Policies
+![Figure 2: Scanning in Pre-CI Stage](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/pre-ci.gif)
 
-Devtron's Security Policies feature allows users to define policies based on the severity levels of vulnerabilities, which include `Critical`, `Moderate`, and `Low`. Users have the flexibility to set policies that either block the deployment of container images with vulnerabilities or allow their deployment.
+1. In your application, go to **App Configuration** → **Workflow Editor**.
 
-With this feature, users can specify their desired actions for each severity level. For example, they can choose to block any container image with `Critical` vulnerabilities, while allowing container images with `Moderate` or `Low` vulnerabilities to be deployed.
+2. Click the CI pipeline of your preferred workflow.
 
-### Checking Comprehensive Vulnerability Scan Report
+3. Go to the **Pre-build stage** (tab).
 
-To access the comprehensive security scan reports, follow these steps:
+4. Click **+ Add Task**.
 
-1. Navigate to the `Security` tab within Devtron.
-2. Select the desired application from the available list.
+5. Choose **Vulnerability_Scanner v1.0.0** plugin from the list.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/security-scans.jpg)
+6. Click **Update Pipeline**.
 
-This action will provide detailed information regarding the security scan of the application, including the CVE, Severity of the identified vulnerabilities, as you can see in the image below.
+Based on the results of the scanner, you can also decide whether your CI should proceed further or not. This is possible through **Pass/Failure Condition** setting in the plugin. In the below example, we are allowing image build only if the no. of high vulnerability is zero.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/security-scans-report.jpg)
+![Figure 3: Setting a Condition](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/pre-ci-condition.gif)
 
-Each vulnerability is identified by a **CVE ID** and categorized based on **Severity**, **Package**, **Current Version**, and **Fixed In Version**.
+Results of Pre-CI scan will be visible under `Code Scan` in the **App Details** page as shown below.
 
-* **`CVE ID`** refers to the Common Vulnerability ID assigned to each vulnerability.
-* **`Severity`** indicates the severity of the vulnerability and can be classified as Critical, Medium, or Low.
-* The **`Package`** column contains metadata associated with the vulnerability. The current Version refers to the specific version of the vulnerability.
-* The **`Fixed In Version`** column displays the version name if the vulnerability has been addressed in a subsequent release; otherwise, it remains blank.
+![Figure 4: Pre-CI Code Scan Results](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/code-scan.gif)
 
-### Discover Vulnerabilities on the Trigger Page
+### After Building Container Image
 
-Devtron provides the capability to identify vulnerabilities before image deployment in the Continuous Deployment (CD) pipeline. This ensures that potential vulnerabilities are detected and addressed early in the deployment process.
+Once a container image is ready, you can scan its base image libraries, stale files, compromised licenses, and many more.
 
-To access security vulnerability details during image deployment in Devtron, follow these steps:
+There are 2 options available:
+* Image scan in the Build stage (refer [Security Scans](./security-features/security-scans.md))
+* Comprehensive scan in Post-Build stage
 
-1. Click on the `Show source info` option for the desired image during the deployment process.
-2. Navigate to the `Security` tab.
+This section contains the steps for comprehensive scan.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/show-vulnerabilities-before-deployment.jpg)
+![Figure 5: Scanning in Post-CI Stage](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/post-ci.gif)
 
-In the `Security` tab, you will find the security vulnerability details associated with the image. 
+1. Go to the **Post-build stage** (tab) of your CI pipeline.
 
-**NOTE**: Vulnerabilities will only be displayed if a vulnerability scan has been enabled for that specific image. If no vulnerabilities are visible, it indicates that a vulnerability scan has not been performed for the image.
+2. Click **+ Add Task** and choose **Vulnerability_Scanner v1.0.0**.
 
-### Accessing Vulnerability Information on the App Details Page
+3. Click **Update Pipeline**.
 
-Devtron offers the capability to identify vulnerabilities even after an image has been deployed. By navigating to the `app details` page, you can find comprehensive details about the vulnerabilities associated with the deployed image.
+Results of Post-CI scan will be visible under `Image Scan` in the **App Details** page as shown below.
 
-With this capability, Devtron empowers users to stay informed about the security vulnerabilities present in their deployed images.
+![Figure 6: Post-CI Image Scan Results](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/image-scan-1.gif)
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/vulnerability-app-details.jpg)
+### Before Triggering Deployment
 
-By clicking on the 'Details' link in the security vulnerabilities report, you can access detailed information about the security vulnerabilities present inside the deployed image.
+There can be a loophole where the original image built in the CI stage gets compromised later (say, in publicly accessible repository). Therefore, you can scan the image and catch issues before deploying it. On top of that, you can also scan manifests to detect misconfigurations and exposed secrets.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/detailed+vulnerability-app-details.jpg)
+![Figure 7: Scanning in Pre-CD Stage](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/pre-deploy.gif)
 
-## Configuring Security Policies
+1. Go to the **Pre-Deployment stage** (tab) of your CD pipeline.
 
-You can establish security policies for their vulnerabilities through the `Security Policies` tab, which can be accessed from the left pane by navigating to `Security` and selecting `Security Policies`. Policies are implemented in a hierarchical order, following a specific sequence. The order of implementation is as follows, starting from the highest level:
+2. Click **+ Add Task** and choose **Vulnerability_Scanner v1.0.0**.
 
-* **Global**
-* **Cluster**
-* **Environment**
-* **Application**
+3. Click **Update Pipeline**.
 
-Policies are implemented in a hierarchical order, with the following sequence: Global, Cluster, Environment, and Application. Higher-level policies take precedence over lower-level policies, ensuring a systematic and structured enforcement of security measures.
+Results of Pre-CD scan will be visible under `Image Scan` and `Kubernetes Manifest` in the **App Details** page as shown below.
 
-![](../.gitbook/assets/security-feature-global-security-policies.png)
+![Figure 8: Pre-CD Scan Results](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/manifest-scan.gif)
 
-**Some examples of how policies can be defined**
+### During Helm App Deployment
 
-Users can block all the critical vulnerabilities and allow the moderate and low vulnerabilities <br />
-or <br />
-Users can block all vulnerabilities <br />
-or <br />
-Users can block all vulnerabilities for one application and can block only critical vulnerabilities for other applications
+When you [deploy a helm chart](../user-guide/deploy-chart/deployment-of-charts.md), Devtron will scan the image associated with that helm chart and also the manifests, but unlike Devtron Apps, there is no code scan involved.
 
-## Configure Global Security Policy
+Results of helm app scan will be visible under `Image Scan` and `Kubernetes Manifest` in the **App Details** page as shown below.
 
-Within the `Global Security Policies`, there are two options available: Block and Allow.
-If critical severity levels are blocked in the `Global Security Policy`, the same blocking will be applied to the `Cluster Security Policy`. Similarly, if the global policy is modified to allow critical levels, it will also allow them in `Cluster Security Policies`. 
-However, users have the flexibility to explicitly modify these policies as desired.
+![Figure 9: Helm App Scan Results](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/helm-app-scan.gif)
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/global-security-policy.jpg)
+### Extras
 
-## Configure Cluster Security Policy
+You can also check for vulnerabilities within a specific workload such as job, pod, deployment, etc. There are two ways to perform it:
 
+#### From App Details
 
-In `Global Security Policies`, there are two options: `Block` and `Allow`. `Cluster Security Policies` have an additional option called `Inherit`.
+* Go to **App Details** (Devtron App/Helm App) → **Workloads** (under `K8 Resources` tab).
+* Click a workload, e.g., Pod.
+* On the right-hand side, click the kebab menu (3 vertical dots).
+* Click **Check Vulnerabilities**.
 
-When `Inherit` is selected, the policy adopts settings from higher-level options. For example, if critical severity levels are blocked globally, they will also be blocked in `Cluster Security Policies`. Changing the global policy to allow critical levels will also allow them in `Cluster Security Policies`. Explicit changes can be made to these policies.
+    ![Figure 10: Scanning Workloads - App Details Page](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/app-details-scan.gif)
 
-To block critical vulnerabilities globally but allow them in specific clusters:
+#### From Resource Browser
 
-1. Select the desired cluster.
-2. Change the critical setting to allow.
-3. This change only affects the policy of the selected cluster without impacting others or the global policy.
+* Go to Resource Browser.
+* Select a cluster.
+* Click a workload within the **Workloads** dropdown.
+* Access the **Check Vulnerabilities** option from the kebab menu present to your selected workload.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/cluster-security-policy.jpg)
+    ![Figure 11: Scanning Workloads - Resource Browser](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/rb-scan.gif)
 
-## Configure Environment Security Policy
+---
 
-Environment Security Policies, like Cluster Security Policies, offer three options: Block, Allow, and Inherit.
+## Scans and Policies
 
-The `Environment Security Policy` inherits its settings from the `Cluster Security Policy`, following a hierarchical structure where each level inherits the policy from its upper level.
+{% hint style="warning" %}
+### Who Can Perform This Action?
+Users need to have super-admin permission to enable vulnerability scanning and to define security policies in Devtron.
+{% endhint %}
 
-When you select an environment, it automatically adopts the policy of the associated cluster. For example, if critical-level vulnerabilities are blocked globally but allowed in the `Cluster Security Policy`, the `Environment Security Policy` will inherit this allowance. Consequently, critical-level vulnerabilities will also be allowed in the `Environment Security Policy`.
+Devtron's Security feature has two primary sections:
 
-However, you have the flexibility to make explicit changes to the policy if needed. This empowers you to customize the policy to align with specific requirements or preferences.
+1. [**Security Scans**](./security-features/security-scans.md) - You can view the vulnerabilities detected across your applications.
 
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/environment-security-policy.jpg)
-
-## Configure Application Security Policy
-
-The `Application Security Policy` operates on a similar principle as other policies. However, in the `Application Security Policy`, the policy is determined by both the Environment option and the Application option.
-
-When modifying the policy within a development environment, the changes will be applied to all applications within that specific development environment. This means that any adjustments made to the policy settings will be consistently applied across all applications associated with that particular development environment.
-
-This approach ensures uniformity and streamlined management of security policies within specific environments and their corresponding applications.
-
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/application-security-policy.jpg)
-
-## Block or Allow Specific CVE Policies.
-
-To block or allow specific Common Vulnerabilities and Exposures (CVE) policies, simply click `Add CVE Policy`.
-
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/add-cve-policy.jpg)
-
-A window will appear where you can enter the CVE ID and select whether to allow or block it.
-
-![](https://devtron-public-asset.s3.us-east-2.amazonaws.com/images/security-features/cve-popup.jpg)
-
-This action will determine whether image deployment is allowed or blocked based on the presence of vulnerabilities matching that particular CVE ID. Any other deployment decisions will be made according to the policies set previously.
+2. [**Security Policies**](./security-features/security-policies.md) - This allows you to define guardrails to block or allow the deployment of container images depending on the vulnerabilities detected.
 

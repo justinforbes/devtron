@@ -1,43 +1,55 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package informer
 
 import (
 	"github.com/devtron-labs/common-lib/utils/k8s"
-	"sync"
-	"time"
-
-	"github.com/devtron-labs/authenticator/client"
 	"github.com/devtron-labs/devtron/api/bean"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
+	"sync"
+	"time"
 )
 
-func NewGlobalMapClusterNamespace() map[string]map[string]bool {
-	globalMapClusterNamespace := make(map[string]map[string]bool)
+func NewGlobalMapClusterNamespace() sync.Map {
+	var globalMapClusterNamespace sync.Map
 	return globalMapClusterNamespace
 }
 
 type K8sInformerFactoryImpl struct {
 	logger                    *zap.SugaredLogger
-	globalMapClusterNamespace map[string]map[string]bool // {"cluster1":{"ns1":true","ns2":true"}}
-	mutex                     sync.Mutex
+	globalMapClusterNamespace sync.Map // {"cluster1":{"ns1":true","ns2":true"}}
 	informerStopper           map[string]chan struct{}
-	runtimeConfig             *client.RuntimeConfig
-	k8sUtil                   *k8s.K8sUtil
+	k8sUtil                   *k8s.K8sServiceImpl
 }
 
 type K8sInformerFactory interface {
 	GetLatestNamespaceListGroupByCLuster() map[string]map[string]bool
 	BuildInformer(clusterInfo []*bean.ClusterInfo)
 	CleanNamespaceInformer(clusterName string)
+	DeleteClusterFromCache(clusterName string)
 }
 
-func NewK8sInformerFactoryImpl(logger *zap.SugaredLogger, globalMapClusterNamespace map[string]map[string]bool, runtimeConfig *client.RuntimeConfig, k8sUtil *k8s.K8sUtil) *K8sInformerFactoryImpl {
+func NewK8sInformerFactoryImpl(logger *zap.SugaredLogger, globalMapClusterNamespace sync.Map, k8sUtil *k8s.K8sServiceImpl) *K8sInformerFactoryImpl {
 	informerFactory := &K8sInformerFactoryImpl{
 		logger:                    logger,
 		globalMapClusterNamespace: globalMapClusterNamespace,
-		runtimeConfig:             runtimeConfig,
 		k8sUtil:                   k8sUtil,
 	}
 	informerFactory.informerStopper = make(map[string]chan struct{})
@@ -46,19 +58,17 @@ func NewK8sInformerFactoryImpl(logger *zap.SugaredLogger, globalMapClusterNamesp
 
 func (impl *K8sInformerFactoryImpl) GetLatestNamespaceListGroupByCLuster() map[string]map[string]bool {
 	copiedClusterNamespaces := make(map[string]map[string]bool)
-	for key, value := range impl.globalMapClusterNamespace {
-		for namespace, v := range value {
-			if _, ok := copiedClusterNamespaces[key]; !ok {
-				allNamespaces := make(map[string]bool)
-				allNamespaces[namespace] = v
-				copiedClusterNamespaces[key] = allNamespaces
-			} else {
-				allNamespaces := copiedClusterNamespaces[key]
-				allNamespaces[namespace] = v
-				copiedClusterNamespaces[key] = allNamespaces
-			}
-		}
-	}
+	impl.globalMapClusterNamespace.Range(func(key, value interface{}) bool {
+		clusterName := key.(string)
+		allNamespaces := value.(*sync.Map)
+		namespaceMap := make(map[string]bool)
+		allNamespaces.Range(func(nsKey, nsValue interface{}) bool {
+			namespaceMap[nsKey.(string)] = nsValue.(bool)
+			return true
+		})
+		copiedClusterNamespaces[clusterName] = namespaceMap
+		return true
+	})
 	return copiedClusterNamespaces
 }
 
@@ -73,14 +83,14 @@ func (impl *K8sInformerFactoryImpl) BuildInformer(clusterInfo []*bean.ClusterInf
 			CertData:              info.CertData,
 			CAData:                info.CAData,
 		}
-		impl.buildInformerAndNamespaceList(info.ClusterName, clusterConfig, &impl.mutex)
+		impl.buildInformerAndNamespaceList(info.ClusterName, clusterConfig)
 	}
 	return
 }
 
-func (impl *K8sInformerFactoryImpl) buildInformerAndNamespaceList(clusterName string, clusterConfig *k8s.ClusterConfig, mutex *sync.Mutex) map[string]map[string]bool {
-	allNamespaces := make(map[string]bool)
-	impl.globalMapClusterNamespace[clusterName] = allNamespaces
+func (impl *K8sInformerFactoryImpl) buildInformerAndNamespaceList(clusterName string, clusterConfig *k8s.ClusterConfig) sync.Map {
+	allNamespaces := sync.Map{}
+	impl.globalMapClusterNamespace.Store(clusterName, &allNamespaces)
 	_, _, clusterClient, err := impl.k8sUtil.GetK8sConfigAndClients(clusterConfig)
 	if err != nil {
 		impl.logger.Errorw("error in getting k8s clientset", "err", err, "clusterName", clusterConfig.ClusterName)
@@ -92,30 +102,16 @@ func (impl *K8sInformerFactoryImpl) buildInformerAndNamespaceList(clusterName st
 	nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if mobject, ok := obj.(metav1.Object); ok {
-				mutex.Lock()
-				defer mutex.Unlock()
-				if _, ok := impl.globalMapClusterNamespace[clusterName]; !ok {
-					allNamespaces := make(map[string]bool)
-					allNamespaces[mobject.GetName()] = true
-					impl.globalMapClusterNamespace[clusterName] = allNamespaces
-				} else {
-					allNamespaces := impl.globalMapClusterNamespace[clusterName]
-					allNamespaces[mobject.GetName()] = true
-					impl.globalMapClusterNamespace[clusterName] = allNamespaces
-				}
-				//mutex.Unlock()
+				value, _ := impl.globalMapClusterNamespace.Load(clusterName)
+				allNamespaces := value.(*sync.Map)
+				allNamespaces.Store(mobject.GetName(), true)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			if object, ok := obj.(metav1.Object); ok {
-				mutex.Lock()
-				defer mutex.Unlock()
-				if _, ok := impl.globalMapClusterNamespace[clusterName]; ok {
-					allNamespaces := impl.globalMapClusterNamespace[clusterName]
-					delete(allNamespaces, object.GetName())
-					impl.globalMapClusterNamespace[clusterName] = allNamespaces
-					//mutex.Unlock()
-				}
+				value, _ := impl.globalMapClusterNamespace.Load(clusterName)
+				allNamespaces := value.(*sync.Map)
+				allNamespaces.Delete(object.GetName())
 			}
 		},
 	})
@@ -130,5 +126,11 @@ func (impl *K8sInformerFactoryImpl) CleanNamespaceInformer(clusterName string) {
 		close(stopper)
 		delete(impl.informerStopper, clusterName)
 	}
+	return
+}
+
+func (impl *K8sInformerFactoryImpl) DeleteClusterFromCache(clusterName string) {
+	impl.CleanNamespaceInformer(clusterName)
+	impl.globalMapClusterNamespace.Delete(clusterName)
 	return
 }

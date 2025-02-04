@@ -1,13 +1,30 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package genericNotes
 
 import (
-	"github.com/devtron-labs/devtron/pkg/cluster"
-	repository2 "github.com/devtron-labs/devtron/pkg/genericNotes/repository"
-	"github.com/devtron-labs/devtron/pkg/sql"
-	repository3 "github.com/devtron-labs/devtron/pkg/user/repository"
+	"github.com/devtron-labs/devtron/pkg/cluster/bean"
 	"log"
 	"testing"
 	"time"
+
+	repository3 "github.com/devtron-labs/devtron/pkg/auth/user/repository"
+	repository2 "github.com/devtron-labs/devtron/pkg/genericNotes/repository"
+	"github.com/devtron-labs/devtron/pkg/sql"
 
 	"github.com/caarlos0/env"
 	"github.com/devtron-labs/devtron/internal/util"
@@ -190,7 +207,7 @@ func cleanDb(tt *testing.T) {
 	}
 }
 
-func createClusterData(DB *pg.DB, bean *cluster.ClusterBean) error {
+func createClusterData(DB *pg.DB, bean *bean.ClusterBean) error {
 	model := &repository.Cluster{
 		Id:          bean.Id,
 		ClusterName: bean.ClusterName,
@@ -205,7 +222,7 @@ func createClusterData(DB *pg.DB, bean *cluster.ClusterBean) error {
 
 func initialiseDb(tt *testing.T) {
 	DB, _ := getDbConn()
-	clusters := []cluster.ClusterBean{
+	clusters := []bean.ClusterBean{
 		{
 			Id:          10000,
 			ClusterName: "test-cluster-1",

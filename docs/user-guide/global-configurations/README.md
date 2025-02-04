@@ -18,19 +18,31 @@ Before you start creating an application, we recommend to provide basic informat
 
 [Chart Repositories](chart-repo.md)
 
-[Custom Charts](custom-charts.md)
+[Deployment Charts](deployment-charts.md)
 
-[SSO Login Services](sso-login.md)
-
-[Authorization](authorization.md)
+[Authorization](authorization/README.md)
 
 [Notifications](manage-notification.md)
 
+[Deployment Window](deployment-window.md)
+
 [External Links](external-links.md)
+
+[Catalog Framework](catalog-framework.md)
 
 [Scoped Variables](scoped-variables.md)
 
+[Pull Image Digest](pull-image-digest.md)
+
 [Tags Policy](tags-policy.md)
+
+[Filter Condition](filter-condition.md)
+
+[Lock Deployment Configuration](lock-deployment-config.md)
+
+[Image Promotion Policy](image-promotion-policy.md)
+
+[Build Infra](build-infra.md)
 
 You can also refer our YouTube video provided here.
 

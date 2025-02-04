@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package pipeline
@@ -21,7 +20,7 @@ import (
 	"context"
 	blob_storage "github.com/devtron-labs/common-lib/blob-storage"
 	"github.com/devtron-labs/common-lib/utils/k8s"
-	"github.com/devtron-labs/devtron/pkg/pipeline/bean"
+	"github.com/devtron-labs/devtron/pkg/build/pipeline/bean"
 	"github.com/devtron-labs/devtron/pkg/pipeline/types"
 	"go.uber.org/zap"
 	"io"
@@ -39,10 +38,10 @@ type CiLogServiceImpl struct {
 	logger     *zap.SugaredLogger
 	ciService  CiService
 	kubeClient *kubernetes.Clientset
-	k8sUtil    *k8s.K8sUtil
+	k8sUtil    *k8s.K8sServiceImpl
 }
 
-func NewCiLogServiceImpl(logger *zap.SugaredLogger, ciService CiService, k8sUtil *k8s.K8sUtil) (*CiLogServiceImpl, error) {
+func NewCiLogServiceImpl(logger *zap.SugaredLogger, ciService CiService, k8sUtil *k8s.K8sServiceImpl) (*CiLogServiceImpl, error) {
 	_, _, clientSet, err := k8sUtil.GetK8sInClusterConfigAndClients()
 	if err != nil {
 		logger.Errorw("error in getting k8s in cluster client set", "err", err)
@@ -69,9 +68,12 @@ func (impl *CiLogServiceImpl) FetchRunningWorkflowLogs(ciLogRequest types.BuildL
 	}
 	req := impl.k8sUtil.GetLogsForAPod(kubeClient, ciLogRequest.Namespace, ciLogRequest.PodName, bean.Main, true)
 	podLogs, err := req.Stream(context.Background())
-	if podLogs == nil || err != nil {
-		impl.logger.Errorw("error in opening stream", "name", ciLogRequest.PodName)
+	if err != nil {
+		impl.logger.Errorw("error in opening stream", "name", ciLogRequest.PodName, "err", err)
 		return nil, nil, err
+	} else if podLogs == nil {
+		impl.logger.Warnw("no stream reader found", "name", ciLogRequest.PodName)
+		return nil, func() error { return nil }, err
 	}
 	cleanUpFunc := func() error {
 		impl.logger.Info("closing running pod log stream")

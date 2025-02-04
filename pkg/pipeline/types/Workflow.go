@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package types
@@ -22,14 +21,20 @@ import (
 	"fmt"
 	"github.com/argoproj/argo-workflows/v3/workflow/common"
 	"github.com/devtron-labs/common-lib/blob-storage"
+	"github.com/devtron-labs/common-lib/utils"
+	bean7 "github.com/devtron-labs/common-lib/utils/bean"
+	"github.com/devtron-labs/common-lib/utils/workFlow"
 	bean3 "github.com/devtron-labs/devtron/api/bean"
 	repository2 "github.com/devtron-labs/devtron/internal/sql/repository"
 	repository3 "github.com/devtron-labs/devtron/internal/sql/repository/imageTagging"
 	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig"
+	"github.com/devtron-labs/devtron/internal/sql/repository/pipelineConfig/bean/workflow/cdWorkflow"
 	bean2 "github.com/devtron-labs/devtron/pkg/bean"
-	"github.com/devtron-labs/devtron/pkg/cluster/repository"
+	bean5 "github.com/devtron-labs/devtron/pkg/build/pipeline/bean"
+	repository4 "github.com/devtron-labs/devtron/pkg/cluster/environment/repository"
+	infraBean "github.com/devtron-labs/devtron/pkg/infraConfig/bean/v1"
 	"github.com/devtron-labs/devtron/pkg/pipeline/bean"
-	"github.com/devtron-labs/devtron/pkg/plugin"
+	bean4 "github.com/devtron-labs/devtron/pkg/plugin/bean"
 	"github.com/devtron-labs/devtron/pkg/resourceQualifiers"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,98 +44,113 @@ import (
 	"time"
 )
 
+const (
+	GIT_REPO_URL_PREFIX     = "GIT_REPO_URL"
+	GIT_COMMIT_HASH_PREFIX  = "GIT_COMMIT_HASH"
+	GIT_SOURCE_TYPE_PREFIX  = "GIT_SOURCE_TYPE"
+	GIT_SOURCE_VALUE_PREFIX = "GIT_SOURCE_VALUE"
+	GIT_SOURCE_COUNT        = "GIT_SOURCE_COUNT"
+)
+
 type WorkflowRequest struct {
-	WorkflowNamePrefix         string                            `json:"workflowNamePrefix"`
-	PipelineName               string                            `json:"pipelineName"`
-	PipelineId                 int                               `json:"pipelineId"`
-	DockerImageTag             string                            `json:"dockerImageTag"`
-	DockerRegistryId           string                            `json:"dockerRegistryId"`
-	DockerRegistryType         string                            `json:"dockerRegistryType"`
-	DockerRegistryURL          string                            `json:"dockerRegistryURL"`
-	DockerConnection           string                            `json:"dockerConnection"`
-	DockerCert                 string                            `json:"dockerCert"`
-	DockerRepository           string                            `json:"dockerRepository"`
-	CheckoutPath               string                            `json:"checkoutPath"`
-	DockerUsername             string                            `json:"dockerUsername"`
-	DockerPassword             string                            `json:"dockerPassword"`
-	AwsRegion                  string                            `json:"awsRegion"`
-	AccessKey                  string                            `json:"accessKey"`
-	SecretKey                  string                            `json:"secretKey"`
-	CiCacheLocation            string                            `json:"ciCacheLocation"`
-	CiCacheRegion              string                            `json:"ciCacheRegion"`
-	CiCacheFileName            string                            `json:"ciCacheFileName"`
-	CiProjectDetails           []bean.CiProjectDetails           `json:"ciProjectDetails"`
-	ContainerResources         bean.ContainerResources           `json:"containerResources"`
-	ActiveDeadlineSeconds      int64                             `json:"activeDeadlineSeconds"`
-	CiImage                    string                            `json:"ciImage"`
-	Namespace                  string                            `json:"namespace"`
-	WorkflowId                 int                               `json:"workflowId"`
-	TriggeredBy                int32                             `json:"triggeredBy"`
-	CacheLimit                 int64                             `json:"cacheLimit"`
-	BeforeDockerBuildScripts   []*bean2.CiScript                 `json:"beforeDockerBuildScripts"`
-	AfterDockerBuildScripts    []*bean2.CiScript                 `json:"afterDockerBuildScripts"`
-	CiArtifactLocation         string                            `json:"ciArtifactLocation"`
-	CiArtifactBucket           string                            `json:"ciArtifactBucket"`
-	CiArtifactFileName         string                            `json:"ciArtifactFileName"`
-	CiArtifactRegion           string                            `json:"ciArtifactRegion"`
-	ScanEnabled                bool                              `json:"scanEnabled"`
-	CloudProvider              blob_storage.BlobStorageType      `json:"cloudProvider"`
-	BlobStorageConfigured      bool                              `json:"blobStorageConfigured"`
-	BlobStorageS3Config        *blob_storage.BlobStorageS3Config `json:"blobStorageS3Config"`
-	AzureBlobConfig            *blob_storage.AzureBlobConfig     `json:"azureBlobConfig"`
-	GcpBlobConfig              *blob_storage.GcpBlobConfig       `json:"gcpBlobConfig"`
-	BlobStorageLogsKey         string                            `json:"blobStorageLogsKey"`
-	InAppLoggingEnabled        bool                              `json:"inAppLoggingEnabled"`
-	DefaultAddressPoolBaseCidr string                            `json:"defaultAddressPoolBaseCidr"`
-	DefaultAddressPoolSize     int                               `json:"defaultAddressPoolSize"`
-	PreCiSteps                 []*bean.StepObject                `json:"preCiSteps"`
-	PostCiSteps                []*bean.StepObject                `json:"postCiSteps"`
-	RefPlugins                 []*bean.RefPluginObject           `json:"refPlugins"`
-	AppName                    string                            `json:"appName"`
-	TriggerByAuthor            string                            `json:"triggerByAuthor"`
-	CiBuildConfig              *bean.CiBuildConfigBean           `json:"ciBuildConfig"`
-	CiBuildDockerMtuValue      int                               `json:"ciBuildDockerMtuValue"`
-	IgnoreDockerCachePush      bool                              `json:"ignoreDockerCachePush"`
-	IgnoreDockerCachePull      bool                              `json:"ignoreDockerCachePull"`
-	CacheInvalidate            bool                              `json:"cacheInvalidate"`
-	IsPvcMounted               bool                              `json:"IsPvcMounted"`
-	ExtraEnvironmentVariables  map[string]string                 `json:"extraEnvironmentVariables"`
-	EnableBuildContext         bool                              `json:"enableBuildContext"`
-	AppId                      int                               `json:"appId"`
-	EnvironmentId              int                               `json:"environmentId"`
-	OrchestratorHost           string                            `json:"orchestratorHost"`
-	OrchestratorToken          string                            `json:"orchestratorToken"`
-	IsExtRun                   bool                              `json:"isExtRun"`
-	ImageRetryCount            int                               `json:"imageRetryCount"`
-	ImageRetryInterval         int                               `json:"imageRetryInterval"`
+	WorkflowNamePrefix          string                            `json:"workflowNamePrefix"`
+	PipelineName                string                            `json:"pipelineName"`
+	PipelineId                  int                               `json:"pipelineId"`
+	DockerImageTag              string                            `json:"dockerImageTag"`
+	DockerRegistryId            string                            `json:"dockerRegistryId"`
+	DockerRegistryType          string                            `json:"dockerRegistryType"`
+	DockerRegistryURL           string                            `json:"dockerRegistryURL"`
+	DockerConnection            string                            `json:"dockerConnection"`
+	DockerCert                  string                            `json:"dockerCert"`
+	DockerRepository            string                            `json:"dockerRepository"`
+	CheckoutPath                string                            `json:"checkoutPath"`
+	DockerUsername              string                            `json:"dockerUsername"`
+	DockerPassword              string                            `json:"dockerPassword"`
+	AwsRegion                   string                            `json:"awsRegion"`
+	AccessKey                   string                            `json:"accessKey"`
+	SecretKey                   string                            `json:"secretKey"`
+	CiCacheLocation             string                            `json:"ciCacheLocation"`
+	CiCacheRegion               string                            `json:"ciCacheRegion"`
+	CiCacheFileName             string                            `json:"ciCacheFileName"`
+	CiProjectDetails            []bean.CiProjectDetails           `json:"ciProjectDetails"`
+	ContainerResources          bean.ContainerResources           `json:"containerResources"`
+	ActiveDeadlineSeconds       int64                             `json:"activeDeadlineSeconds"`
+	CiImage                     string                            `json:"ciImage"`
+	Namespace                   string                            `json:"namespace"`
+	WorkflowId                  int                               `json:"workflowId"`
+	TriggeredBy                 int32                             `json:"triggeredBy"`
+	CacheLimit                  int64                             `json:"cacheLimit"`
+	BeforeDockerBuildScripts    []*bean2.CiScript                 `json:"beforeDockerBuildScripts"`
+	AfterDockerBuildScripts     []*bean2.CiScript                 `json:"afterDockerBuildScripts"`
+	CiArtifactLocation          string                            `json:"ciArtifactLocation"`
+	CiArtifactBucket            string                            `json:"ciArtifactBucket"`
+	CiArtifactFileName          string                            `json:"ciArtifactFileName"`
+	CiArtifactRegion            string                            `json:"ciArtifactRegion"`
+	ScanEnabled                 bool                              `json:"scanEnabled"`
+	CloudProvider               blob_storage.BlobStorageType      `json:"cloudProvider"`
+	BlobStorageConfigured       bool                              `json:"blobStorageConfigured"`
+	BlobStorageS3Config         *blob_storage.BlobStorageS3Config `json:"blobStorageS3Config"`
+	AzureBlobConfig             *blob_storage.AzureBlobConfig     `json:"azureBlobConfig"`
+	GcpBlobConfig               *blob_storage.GcpBlobConfig       `json:"gcpBlobConfig"`
+	BlobStorageLogsKey          string                            `json:"blobStorageLogsKey"`
+	InAppLoggingEnabled         bool                              `json:"inAppLoggingEnabled"`
+	DefaultAddressPoolBaseCidr  string                            `json:"defaultAddressPoolBaseCidr"`
+	DefaultAddressPoolSize      int                               `json:"defaultAddressPoolSize"`
+	PreCiSteps                  []*bean.StepObject                `json:"preCiSteps"`
+	PostCiSteps                 []*bean.StepObject                `json:"postCiSteps"`
+	RefPlugins                  []*bean.RefPluginObject           `json:"refPlugins"`
+	AppName                     string                            `json:"appName"`
+	TriggerByAuthor             string                            `json:"triggerByAuthor"`
+	CiBuildConfig               *bean5.CiBuildConfigBean          `json:"ciBuildConfig"`
+	CiBuildDockerMtuValue       int                               `json:"ciBuildDockerMtuValue"`
+	IgnoreDockerCachePush       bool                              `json:"ignoreDockerCachePush"`
+	IgnoreDockerCachePull       bool                              `json:"ignoreDockerCachePull"`
+	CacheInvalidate             bool                              `json:"cacheInvalidate"`
+	IsPvcMounted                bool                              `json:"IsPvcMounted"`
+	RuntimeEnvironmentVariables map[string]string                 `json:"runtimeEnvironmentVariables"`
+	SystemEnvironmentVariables  map[string]string                 `json:"systemEnvironmentVariables"`
+	EnableBuildContext          bool                              `json:"enableBuildContext"`
+	AppId                       int                               `json:"appId"`
+	EnvironmentId               int                               `json:"environmentId"`
+	OrchestratorHost            string                            `json:"orchestratorHost"`
+	OrchestratorToken           string                            `json:"orchestratorToken"`
+	IsExtRun                    bool                              `json:"isExtRun"`
+	ImageRetryCount             int                               `json:"imageRetryCount"`
+	ImageRetryInterval          int                               `json:"imageRetryInterval"`
 	// Data from CD Workflow service
-	WorkflowRunnerId            int                                   `json:"workflowRunnerId"`
-	CdPipelineId                int                                   `json:"cdPipelineId"`
-	StageYaml                   string                                `json:"stageYaml"`
-	ArtifactLocation            string                                `json:"artifactLocation"`
-	CiArtifactDTO               CiArtifactDTO                         `json:"ciArtifactDTO"`
-	CdImage                     string                                `json:"cdImage"`
-	StageType                   string                                `json:"stageType"`
-	CdCacheLocation             string                                `json:"cdCacheLocation"`
-	CdCacheRegion               string                                `json:"cdCacheRegion"`
-	WorkflowPrefixForLog        string                                `json:"workflowPrefixForLog"`
-	DeploymentTriggeredBy       string                                `json:"deploymentTriggeredBy,omitempty"`
-	DeploymentTriggerTime       time.Time                             `json:"deploymentTriggerTime,omitempty"`
-	DeploymentReleaseCounter    int                                   `json:"deploymentReleaseCounter,omitempty"`
-	WorkflowExecutor            pipelineConfig.WorkflowExecutorType   `json:"workflowExecutor"`
-	PrePostDeploySteps          []*bean.StepObject                    `json:"prePostDeploySteps"`
-	CiArtifactLastFetch         time.Time                             `json:"ciArtifactLastFetch"`
-	CiPipelineType              string                                `json:"ciPipelineType"`
-	UseExternalClusterBlob      bool                                  `json:"useExternalClusterBlob"`
-	RegistryDestinationImageMap map[string][]string                   `json:"registryDestinationImageMap"`
-	RegistryCredentialMap       map[string]plugin.RegistryCredentials `json:"registryCredentialMap"`
-	PluginArtifactStage         string                                `json:"pluginArtifactStage"`
-	PushImageBeforePostCI       bool                                  `json:"pushImageBeforePostCI"`
+	WorkflowRunnerId            int                                  `json:"workflowRunnerId"`
+	CdPipelineId                int                                  `json:"cdPipelineId"`
+	StageYaml                   string                               `json:"stageYaml"`
+	ArtifactLocation            string                               `json:"artifactLocation"`
+	CiArtifactDTO               CiArtifactDTO                        `json:"ciArtifactDTO"`
+	CdImage                     string                               `json:"cdImage"`
+	StageType                   string                               `json:"stageType"`
+	CdCacheLocation             string                               `json:"cdCacheLocation"`
+	CdCacheRegion               string                               `json:"cdCacheRegion"`
+	WorkflowPrefixForLog        string                               `json:"workflowPrefixForLog"`
+	DeploymentTriggeredBy       string                               `json:"deploymentTriggeredBy,omitempty"`
+	DeploymentTriggerTime       time.Time                            `json:"deploymentTriggerTime,omitempty"`
+	DeploymentReleaseCounter    int                                  `json:"deploymentReleaseCounter,omitempty"`
+	WorkflowExecutor            cdWorkflow.WorkflowExecutorType      `json:"workflowExecutor"`
+	PrePostDeploySteps          []*bean.StepObject                   `json:"prePostDeploySteps"`
+	CiArtifactLastFetch         time.Time                            `json:"ciArtifactLastFetch"`
+	CiPipelineType              string                               `json:"ciPipelineType"`
+	UseExternalClusterBlob      bool                                 `json:"useExternalClusterBlob"`
+	RegistryDestinationImageMap map[string][]string                  `json:"registryDestinationImageMap"`
+	RegistryCredentialMap       map[string]bean4.RegistryCredentials `json:"registryCredentialMap"`
+	PluginArtifactStage         string                               `json:"pluginArtifactStage"`
+	PushImageBeforePostCI       bool                                 `json:"pushImageBeforePostCI"`
+	ImageScanMaxRetries         int                                  `json:"imageScanMaxRetries,omitempty"`
+	ImageScanRetryDelay         int                                  `json:"imageScanRetryDelay,omitempty"`
 	Type                        bean.WorkflowPipelineType
 	Pipeline                    *pipelineConfig.Pipeline
-	Env                         *repository.Environment
+	Env                         *repository4.Environment
 	AppLabels                   map[string]string
 	Scope                       resourceQualifiers.Scope
+	BuildxCacheModeMin          bool   `json:"buildxCacheModeMin"`
+	AsyncBuildxCacheExport      bool   `json:"asyncBuildxCacheExport"`
+	UseDockerApiToGetDigest     bool   `json:"useDockerApiToGetDigest"`
+	HostUrl                     string `json:"hostUrl"`
 }
 
 func (workflowRequest *WorkflowRequest) updateExternalRunMetadata() {
@@ -141,7 +161,7 @@ func (workflowRequest *WorkflowRequest) updateExternalRunMetadata() {
 		workflowRequest.IsExtRun = true
 	}
 	// Check for external in case of JOB
-	if env != nil && env.Id != 0 && workflowRequest.CheckForJob() {
+	if env != nil && env.Id != 0 && workflowRequest.IsDevtronJob() {
 		workflowRequest.EnvironmentId = env.Id
 		workflowRequest.IsExtRun = true
 	}
@@ -207,8 +227,10 @@ func (workflowRequest *WorkflowRequest) GetWorkflowJson(config *CiCdConfig) ([]b
 
 func (workflowRequest *WorkflowRequest) GetEventTypeForWorkflowRequest() string {
 	switch workflowRequest.Type {
-	case bean.CI_WORKFLOW_PIPELINE_TYPE, bean.JOB_WORKFLOW_PIPELINE_TYPE:
+	case bean.CI_WORKFLOW_PIPELINE_TYPE:
 		return bean.CiStage
+	case bean.JOB_WORKFLOW_PIPELINE_TYPE:
+		return bean.JobStage
 	case bean.CD_WORKFLOW_PIPELINE_TYPE:
 		return bean.CdStage
 	default:
@@ -218,7 +240,7 @@ func (workflowRequest *WorkflowRequest) GetEventTypeForWorkflowRequest() string 
 
 func (workflowRequest *WorkflowRequest) GetWorkflowTypeForWorkflowRequest() string {
 	switch workflowRequest.Type {
-	case bean.CI_WORKFLOW_PIPELINE_TYPE, bean.JOB_WORKFLOW_PIPELINE_TYPE:
+	case bean.CI_WORKFLOW_PIPELINE_TYPE, bean.JOB_WORKFLOW_PIPELINE_TYPE: //TODO: separate job as did in eventType, will need changes in wf template for this
 		return bean.CI_WORKFLOW_NAME
 	case bean.CD_WORKFLOW_PIPELINE_TYPE:
 		return bean.CD_WORKFLOW_NAME
@@ -227,11 +249,28 @@ func (workflowRequest *WorkflowRequest) GetWorkflowTypeForWorkflowRequest() stri
 	}
 }
 
+func (workflowRequest *WorkflowRequest) GetPipelineTypeForGlobalCMCS() string {
+	switch workflowRequest.Type {
+	case bean.CI_WORKFLOW_PIPELINE_TYPE, bean.JOB_WORKFLOW_PIPELINE_TYPE:
+		return bean.CiStage //although for job, event type is changed to job from ci but for backward compatibility still sending ci for global cm/cs
+	case bean.CD_WORKFLOW_PIPELINE_TYPE:
+		return bean.CdStage
+	default:
+		return ""
+	}
+}
+
 func (workflowRequest *WorkflowRequest) getContainerEnvVariables(config *CiCdConfig, workflowJson []byte) (containerEnvVariables []v1.EnvVar) {
-	containerEnvVariables = []v1.EnvVar{{Name: bean.IMAGE_SCANNER_ENDPOINT, Value: config.ImageScannerEndpoint}}
+	containerEnvVariables = []v1.EnvVar{
+		{Name: bean.IMAGE_SCANNER_ENDPOINT, Value: config.ImageScannerEndpoint},
+		{Name: "NATS_SERVER_HOST", Value: config.NatsServerHost},
+		{Name: utils.DEVTRON_SELF_POD_NAME, ValueFrom: &v1.EnvVarSource{FieldRef: &v1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.name"}}},
+		{Name: utils.DEVTRON_SELF_POD_UID, ValueFrom: &v1.EnvVarSource{FieldRef: &v1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.uid"}}},
+	}
 	eventEnv := v1.EnvVar{Name: "CI_CD_EVENT", Value: string(workflowJson)}
 	inAppLoggingEnv := v1.EnvVar{Name: "IN_APP_LOGGING", Value: strconv.FormatBool(workflowRequest.InAppLoggingEnabled)}
-	containerEnvVariables = append(containerEnvVariables, eventEnv, inAppLoggingEnv)
+	showDockerBuildArgsEnv := v1.EnvVar{Name: "SHOW_DOCKER_BUILD_ARGS", Value: strconv.FormatBool(config.ShowDockerBuildCmdInLogs)}
+	containerEnvVariables = append(containerEnvVariables, eventEnv, inAppLoggingEnv, showDockerBuildArgsEnv)
 	return containerEnvVariables
 }
 
@@ -250,7 +289,7 @@ func (workflowRequest *WorkflowRequest) getPVCForWorkflowRequest() string {
 			workflowRequest.IgnoreDockerCachePull = true
 		}
 	} else {
-		//pvc not supported for other then ci and job currently
+		// pvc not supported for other then ci and job currently
 	}
 	return pvc
 }
@@ -279,7 +318,7 @@ func (workflowRequest *WorkflowRequest) getBlobStorageLogsPrefix() string {
 
 func (workflowRequest *WorkflowRequest) updateBlobStorageLogsKey(config *CiCdConfig) {
 	workflowRequest.BlobStorageLogsKey = fmt.Sprintf("%s/%s", workflowRequest.getDefaultBuildLogsKeyPrefix(config), workflowRequest.getBlobStorageLogsPrefix())
-	workflowRequest.InAppLoggingEnabled = config.InAppLoggingEnabled || (workflowRequest.WorkflowExecutor == pipelineConfig.WORKFLOW_EXECUTOR_TYPE_SYSTEM)
+	workflowRequest.InAppLoggingEnabled = config.InAppLoggingEnabled || (workflowRequest.WorkflowExecutor == cdWorkflow.WORKFLOW_EXECUTOR_TYPE_SYSTEM)
 }
 
 func (workflowRequest *WorkflowRequest) getWorkflowJson() ([]byte, error) {
@@ -311,6 +350,11 @@ func (workflowRequest *WorkflowRequest) AddNodeConstraintsFromConfig(workflowTem
 	workflowTemplate.ArchiveLogs = workflowRequest.BlobStorageConfigured && !workflowRequest.InAppLoggingEnabled
 	workflowTemplate.RestartPolicy = v1.RestartPolicyNever
 
+}
+
+func (workflowRequest *WorkflowRequest) AddInfraConfigurations(workflowTemplate *bean.WorkflowTemplate, infraConfiguration *infraBean.InfraConfig) {
+	timeout := infraConfiguration.GetCiTimeoutInt()
+	workflowTemplate.SetActiveDeadlineSeconds(timeout)
 }
 
 func (workflowRequest *WorkflowRequest) GetGlobalCmCsNamePrefix() string {
@@ -373,8 +417,12 @@ func (workflowRequest *WorkflowRequest) GetExistingCmCsNamePrefix() string {
 	}
 }
 
-func (workflowRequest *WorkflowRequest) CheckForJob() bool {
+func (workflowRequest *WorkflowRequest) IsDevtronJob() bool {
 	return workflowRequest.Type == bean.JOB_WORKFLOW_PIPELINE_TYPE
+}
+
+func (workflowRequest *WorkflowRequest) IsDevtronCI() bool {
+	return workflowRequest.Type == bean.CI_WORKFLOW_PIPELINE_TYPE
 }
 
 func (workflowRequest *WorkflowRequest) GetNodeConstraints(config *CiCdConfig) *bean.NodeConstraints {
@@ -404,15 +452,15 @@ func (workflowRequest *WorkflowRequest) GetNodeConstraints(config *CiCdConfig) *
 	}
 }
 
-func (workflowRequest *WorkflowRequest) GetLimitReqCpuMem(config *CiCdConfig) v1.ResourceRequirements {
+func (workflowRequest *WorkflowRequest) GetLimitReqCpuMem(config *CiCdConfig, infraConfigurations *infraBean.InfraConfig) v1.ResourceRequirements {
 	limitReqCpuMem := &bean.LimitReqCpuMem{}
 	switch workflowRequest.Type {
 	case bean.CI_WORKFLOW_PIPELINE_TYPE, bean.JOB_WORKFLOW_PIPELINE_TYPE:
 		limitReqCpuMem = &bean.LimitReqCpuMem{
-			LimitCpu: config.CiLimitCpu,
-			LimitMem: config.CiLimitMem,
-			ReqCpu:   config.CiReqCpu,
-			ReqMem:   config.CiReqMem,
+			LimitCpu: infraConfigurations.GetCiLimitCpu(),
+			LimitMem: infraConfigurations.GetCiLimitMem(),
+			ReqCpu:   infraConfigurations.GetCiReqCpu(),
+			ReqMem:   infraConfigurations.GetCiReqMem(),
 		}
 	case bean.CD_WORKFLOW_PIPELINE_TYPE:
 		limitReqCpuMem = &bean.LimitReqCpuMem{
@@ -445,7 +493,7 @@ func (workflowRequest *WorkflowRequest) getWorkflowImage() string {
 	}
 }
 
-func (workflowRequest *WorkflowRequest) GetWorkflowMainContainer(config *CiCdConfig, workflowJson []byte, workflowTemplate *bean.WorkflowTemplate, workflowConfigMaps []bean3.ConfigSecretMap, workflowSecrets []bean3.ConfigSecretMap) (v1.Container, error) {
+func (workflowRequest *WorkflowRequest) GetWorkflowMainContainer(config *CiCdConfig, infraConfigurations *infraBean.InfraConfig, workflowJson []byte, workflowTemplate *bean.WorkflowTemplate, workflowConfigMaps []bean3.ConfigSecretMap, workflowSecrets []bean3.ConfigSecretMap) (v1.Container, error) {
 	privileged := true
 	pvc := workflowRequest.getPVCForWorkflowRequest()
 	containerEnvVariables := workflowRequest.getContainerEnvVariables(config, workflowJson)
@@ -456,11 +504,19 @@ func (workflowRequest *WorkflowRequest) GetWorkflowMainContainer(config *CiCdCon
 		SecurityContext: &v1.SecurityContext{
 			Privileged: &privileged,
 		},
-		Resources: workflowRequest.GetLimitReqCpuMem(config),
+		TerminationMessagePath: workFlow.GetTerminalLogFilePath(),
+		Resources:              workflowRequest.GetLimitReqCpuMem(config, infraConfigurations),
 	}
+	// add volumeMount for downwardAPI volume
+	workflowMainContainer.VolumeMounts = append(workflowMainContainer.VolumeMounts,
+		v1.VolumeMount{
+			Name:      utils.DEVTRON_SELF_DOWNWARD_API_VOLUME,
+			MountPath: utils.DEVTRON_SELF_DOWNWARD_API_VOLUME_PATH,
+		},
+	)
 	if workflowRequest.Type == bean.CI_WORKFLOW_PIPELINE_TYPE || workflowRequest.Type == bean.JOB_WORKFLOW_PIPELINE_TYPE {
 		workflowMainContainer.Ports = []v1.ContainerPort{{
-			//exposed for user specific data from ci container
+			// exposed for user specific data from ci container
 			Name:          "app-data",
 			ContainerPort: 9102,
 		}}
@@ -507,8 +563,8 @@ func (workflowRequest *WorkflowRequest) updateVolumeMountsForCi(config *CiCdConf
 	if err != nil {
 		return err
 	}
-	workflowTemplate.Volumes = volume
-	workflowMainContainer.VolumeMounts = volumeMounts
+	workflowTemplate.Volumes = append(workflowTemplate.Volumes, volume...)
+	workflowMainContainer.VolumeMounts = append(workflowMainContainer.VolumeMounts, volumeMounts...)
 	return nil
 }
 
@@ -551,20 +607,19 @@ func updateContainerEnvs(isCM bool, workflowMainContainer *v1.Container, configS
 	}
 }
 
-const PRE = "PRE"
-
-const POST = "POST"
-
-const CI_NODE_PVC_ALL_ENV = "devtron.ai/ci-pvc-all"
-
-const CI_NODE_PVC_PIPELINE_PREFIX = "devtron.ai/ci-pvc"
+const (
+	PRE                         = "PRE"
+	POST                        = "POST"
+	CI_NODE_PVC_ALL_ENV         = "devtron.ai/ci-pvc-all"
+	CI_NODE_PVC_PIPELINE_PREFIX = "devtron.ai/ci-pvc"
+)
 
 type CiArtifactDTO struct {
 	Id                   int    `json:"id"`
-	PipelineId           int    `json:"pipelineId"` //id of the ci pipeline from which this webhook was triggered
+	PipelineId           int    `json:"pipelineId"` // id of the ci pipeline from which this webhook was triggered
 	Image                string `json:"image"`
 	ImageDigest          string `json:"imageDigest"`
-	MaterialInfo         string `json:"materialInfo"` //git material metadata json array string
+	MaterialInfo         string `json:"materialInfo"` // git material metadata json array string
 	DataSource           string `json:"dataSource"`
 	WorkflowId           *int   `json:"workflowId"`
 	ciArtifactRepository repository2.CiArtifactRepository
@@ -579,6 +634,7 @@ type GitMetadata struct {
 	GitCommitHash  string `json:"GIT_COMMIT_HASH"`
 	GitSourceType  string `json:"GIT_SOURCE_TYPE"`
 	GitSourceValue string `json:"GIT_SOURCE_VALUE"`
+	GitRepoUrl     string `json:"GIT_REPO_URL"`
 }
 
 type AppLabelMetadata struct {
@@ -621,6 +677,7 @@ type WorkflowResponse struct {
 	CustomTag            *bean3.CustomTagErrorResponse               `json:"customTag,omitempty"`
 	PipelineType         string                                      `json:"pipelineType"`
 	ReferenceWorkflowId  int                                         `json:"referenceWorkflowId"`
+	TargetPlatforms      []*bean7.TargetPlatform                     `json:"targetPlatforms"`
 }
 
 type ConfigMapSecretDto struct {

@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package bean
 
 import (
@@ -34,12 +50,14 @@ type WorkflowTemplate struct {
 }
 
 const (
-	CI_WORKFLOW_NAME        = "ci"
-	CI_WORKFLOW_WITH_STAGES = "ci-stages-with-env"
-	CiStage                 = "CI"
-	CdStage                 = "CD"
-	CD_WORKFLOW_NAME        = "cd"
-	CD_WORKFLOW_WITH_STAGES = "cd-stages-with-env"
+	CI_WORKFLOW_NAME           = "ci"
+	CI_WORKFLOW_WITH_STAGES    = "ci-stages-with-env"
+	CiStage                    = "CI"
+	JobStage                   = "JOB"
+	CdStage                    = "CD"
+	CD_WORKFLOW_NAME           = "cd"
+	CD_WORKFLOW_WITH_STAGES    = "cd-stages-with-env"
+	WorkflowGenerateNamePrefix = "devtron.ai/generate-name-prefix"
 )
 
 func (workflowTemplate *WorkflowTemplate) GetEntrypoint() string {
@@ -53,19 +71,26 @@ func (workflowTemplate *WorkflowTemplate) GetEntrypoint() string {
 	}
 }
 
+func (workflowTemplate *WorkflowTemplate) SetActiveDeadlineSeconds(timeout int64) {
+	workflowTemplate.ActiveDeadlineSeconds = &timeout
+}
+
 func (workflowTemplate *WorkflowTemplate) CreateObjectMetadata() *v12.ObjectMeta {
 
+	workflowLabels := map[string]string{WorkflowGenerateNamePrefix: workflowTemplate.WorkflowNamePrefix}
 	switch workflowTemplate.WorkflowType {
 	case CI_WORKFLOW_NAME:
+		workflowLabels["devtron.ai/workflow-purpose"] = "ci"
 		return &v12.ObjectMeta{
 			GenerateName: workflowTemplate.WorkflowNamePrefix + "-",
-			Labels:       map[string]string{"devtron.ai/workflow-purpose": "ci"},
+			Labels:       workflowLabels,
 		}
 	case CD_WORKFLOW_NAME:
+		workflowLabels["devtron.ai/workflow-purpose"] = "cd"
 		return &v12.ObjectMeta{
 			GenerateName: workflowTemplate.WorkflowNamePrefix + "-",
 			Annotations:  map[string]string{"workflows.argoproj.io/controller-instanceid": workflowTemplate.WfControllerInstanceID},
-			Labels:       map[string]string{"devtron.ai/workflow-purpose": "cd"},
+			Labels:       workflowLabels,
 		}
 	default:
 		return nil

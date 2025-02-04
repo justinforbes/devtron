@@ -1,7 +1,27 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package pipeline
 
 import (
 	"fmt"
+	repository5 "github.com/devtron-labs/devtron/pkg/build/git/gitMaterial/repository"
+	"log"
+	"testing"
+
 	"github.com/devtron-labs/devtron/client/gitSensor"
 	"github.com/devtron-labs/devtron/internal/sql/repository"
 	"github.com/devtron-labs/devtron/internal/sql/repository/app"
@@ -13,15 +33,13 @@ import (
 	"github.com/devtron-labs/devtron/internal/util"
 	app2 "github.com/devtron-labs/devtron/pkg/app"
 	"github.com/devtron-labs/devtron/pkg/attributes"
+	"github.com/devtron-labs/devtron/pkg/auth/user"
 	"github.com/devtron-labs/devtron/pkg/bean"
 	repository3 "github.com/devtron-labs/devtron/pkg/cluster/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/history"
 	repository4 "github.com/devtron-labs/devtron/pkg/pipeline/history/repository"
 	"github.com/devtron-labs/devtron/pkg/pipeline/types"
-	"github.com/devtron-labs/devtron/pkg/user"
 	"github.com/stretchr/testify/assert"
-	"log"
-	"testing"
 )
 
 var (
@@ -130,7 +148,7 @@ func InitClusterNoteService() {
 	}
 
 	appRepository := app.NewAppRepositoryImpl(conn, logger)
-	materialRepository := pipelineConfig.NewMaterialRepositoryImpl(conn)
+	materialRepository := repository5.NewMaterialRepositoryImpl(conn)
 	pipelineRepository := pipelineConfig.NewPipelineRepositoryImpl(conn, logger)
 	ciPipelineRepository := pipelineConfig.NewCiPipelineRepositoryImpl(conn, logger)
 	ciPipelineHistoryRepository := repository4.NewCiPipelineHistoryRepositoryImpl(conn, logger)

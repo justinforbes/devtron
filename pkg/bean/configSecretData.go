@@ -1,8 +1,25 @@
+/*
+ * Copyright (c) 2024. Devtron Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package bean
 
 import (
 	"encoding/json"
 	"github.com/devtron-labs/devtron/util"
+	"strings"
 )
 
 type ConfigList struct {
@@ -13,6 +30,9 @@ type SecretList struct {
 	ConfigData []*ConfigData `json:"secrets"`
 }
 
+// there is an adapter written in pkg/bean folder to convert below ConfigData struct to pipeline/bean's ConfigData
+
+// TODO refactoring: duplicate struct of ConfigData in ConfigMapBean.go
 type ConfigData struct {
 	Name                  string           `json:"name"`
 	Type                  string           `json:"type"`
@@ -29,7 +49,13 @@ type ConfigData struct {
 	DefaultESOSecretData  ESOSecretData    `json:"defaultESOSecretData,omitempty"`
 	RoleARN               string           `json:"roleARN"`
 	SubPath               bool             `json:"subPath"`
+	ESOSubPath            []string         `json:"esoSubPath"`
 	FilePermission        string           `json:"filePermission"`
+	Overridden            bool             `json:"overridden"`
+}
+
+func (c *ConfigData) IsESOExternalSecretType() bool {
+	return strings.HasPrefix(c.ExternalSecretType, "ESO")
 }
 
 type ExternalSecret struct {
@@ -42,8 +68,10 @@ type ExternalSecret struct {
 type ESOSecretData struct {
 	SecretStore     json.RawMessage `json:"secretStore,omitempty"`
 	SecretStoreRef  json.RawMessage `json:"secretStoreRef,omitempty"`
-	EsoData         []ESOData       `json:"esoData"`
+	ESOData         []ESOData       `json:"esoData"`
 	RefreshInterval string          `json:"refreshInterval,omitempty"`
+	ESODataFrom     json.RawMessage `json:"esoDataFrom,omitempty"`
+	Template        json.RawMessage `json:"template,omitempty"`
 }
 
 type ESOData struct {
@@ -52,7 +80,7 @@ type ESOData struct {
 	Property  string `json:"property,omitempty"`
 }
 
-func (ConfigData) GetTransformedDataForSecretData(data string, mode util.SecretTransformMode) (string, error) {
+func GetTransformedDataForSecretConfigData(data string, mode util.SecretTransformMode) (string, error) {
 	secretDataMap := make(map[string]*ConfigData)
 	err := json.Unmarshal([]byte(data), &secretDataMap)
 	if err != nil {

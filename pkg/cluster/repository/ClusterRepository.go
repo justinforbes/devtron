@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package repository
@@ -43,7 +42,15 @@ type Cluster struct {
 	ErrorInConnecting      string            `sql:"error_in_connecting"`
 	IsVirtualCluster       bool              `sql:"is_virtual_cluster"`
 	InsecureSkipTlsVerify  bool              `sql:"insecure_skip_tls_verify"`
+	IsProd                 bool              `sql:"is_prod"`
 	sql.AuditLog
+}
+
+func (c *Cluster) IsEmpty() bool {
+	if c == nil {
+		return true
+	}
+	return c.Id == 0
 }
 
 type ClusterRepository interface {
@@ -136,7 +143,7 @@ func (impl ClusterRepositoryImpl) FindAllActiveExceptVirtual() ([]Cluster, error
 	err := impl.dbConnection.
 		Model(&clusters).
 		Where("active=?", true).
-		Where("is_virtual_cluster=?", false).
+		Where("is_virtual_cluster=? OR is_virtual_cluster IS NULL", false).
 		Select()
 	return clusters, err
 }

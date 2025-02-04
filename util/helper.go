@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2020 Devtron Labs
+ * Copyright (c) 2020-2024. Devtron Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
  */
 
 package util
@@ -22,7 +21,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/devtron-labs/devtron/internal/middleware"
 	"github.com/juju/errors"
 	"io"
@@ -32,7 +30,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -133,6 +130,11 @@ func Generate(size int) string {
 	}
 	str := b.String()
 	return str
+}
+
+// Generates random name format name-clone-xyts
+func GenerateNewWorkflowName(name string) string {
+	return fmt.Sprintf("%s-clone-%s", name, Generate(4))
 }
 
 func HttpRequest(url string) (map[string]interface{}, error) {
@@ -274,6 +276,14 @@ func TriggerGitOpsMetrics(operation string, method string, startTime time.Time, 
 	middleware.GitOpsDuration.WithLabelValues(operation, method, status).Observe(time.Since(startTime).Seconds())
 }
 
+type EvalIsNonPublishableErr func(err error) bool
+
+func AllPublishableError() EvalIsNonPublishableErr {
+	return func(err error) bool {
+		return false
+	}
+}
+
 func InterfaceToString(resp interface{}) string {
 	var dat string
 	b, err := json.Marshal(resp)
@@ -330,16 +340,15 @@ func MatchRegexExpression(exp string, text string) (bool, error) {
 	return matched, nil
 }
 
-func GetLatestImageAccToImagePushedAt(imageDetails []types.ImageDetail) types.ImageDetail {
-	sort.Slice(imageDetails, func(i, j int) bool {
-		return imageDetails[i].ImagePushedAt.After(*imageDetails[j].ImagePushedAt)
-	})
-	return imageDetails[0]
-}
+func GetRandomStringOfGivenLength(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz" +
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func GetReverseSortedImageDetails(imageDetails []types.ImageDetail) []types.ImageDetail {
-	sort.Slice(imageDetails, func(i, j int) bool {
-		return imageDetails[i].ImagePushedAt.Before(*imageDetails[j].ImagePushedAt)
-	})
-	return imageDetails
+	var seededRand = rand.New(
+		rand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
 }

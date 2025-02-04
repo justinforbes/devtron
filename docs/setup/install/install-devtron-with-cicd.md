@@ -4,7 +4,7 @@ In this section, we describe the steps in detail on how you can install Devtron 
 
 ---
 
-## Pre-requisites
+## Prerequisites
 
 Install [Helm](https://helm.sh/docs/intro/install/), if you have not installed it already.
 
@@ -31,13 +31,15 @@ Run the following command to install the latest version of Devtron along with th
 ```bash
 helm repo add devtron https://helm.devtron.ai 
 
+helm repo update devtron
+
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
 --set installer.modules={cicd}
 ```
 
 {% hint style="info" %}
-If you want to configure Blob Storage during the installation, refer [configure blob storage duing installation](#configure-blob-storage-duing-installation).
+If you want to configure Blob Storage during the installation, refer [configure blob storage duing installation](#configure-blob-storage-during-installation).
 {% endhint %}
 
 ---
@@ -72,6 +74,8 @@ Run the following command to install Devtron along with MinIO for storing logs a
 ```bash
 helm repo add devtron https://helm.devtron.ai 
 
+helm repo update devtron
+
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
 --set installer.modules={cicd} \
@@ -94,6 +98,8 @@ Run the following command to install Devtron along with AWS S3 buckets for stori
 ```bash
 helm repo add devtron https://helm.devtron.ai
 
+helm repo update devtron
+
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
 --set installer.modules={cicd} \
@@ -108,6 +114,8 @@ helm install devtron devtron/devtron-operator \
 
 ```bash
 helm repo add devtron https://helm.devtron.ai
+
+helm repo update devtron
 
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
@@ -125,6 +133,8 @@ helm install devtron devtron/devtron-operator \
 
 ```bash
 helm repo add devtron https://helm.devtron.ai
+
+helm repo update devtron
 
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
@@ -150,6 +160,8 @@ Run the following command to install Devtron along with Azure Blob Storage for s
 ```bash
 helm repo add devtron https://helm.devtron.ai
 
+helm repo update devtron
+
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
 --set installer.modules={cicd} \
@@ -170,6 +182,8 @@ Run the following command to install Devtron along with Google Cloud Storage for
 
 ```bash
 helm repo add devtron https://helm.devtron.ai
+
+helm repo update devtron
 
 helm install devtron devtron/devtron-operator \
 --create-namespace --namespace devtroncd \
@@ -279,9 +293,9 @@ kubectl -n devtroncd get secret devtron-secret \
 </details>
 
 
-* If you want to uninstall Devtron or clean Devtron helm installer, refer our [uninstall Devtron](https://docs.devtron.ai/install/uninstall-devtron).
+* If you want to uninstall Devtron or clean Devtron helm installer, refer our [uninstall Devtron](../install/uninstall-devtron.md).
 
-* Related to installaltion, please also refer [FAQ](https://docs.devtron.ai/install/faq-on-installation) section also.
+* Related to installaltion, please also refer [FAQ](../install/faq-on-installation.md) section also.
 
 
 {% hint style="info" %}
